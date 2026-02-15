@@ -1,0 +1,39 @@
+name: Verilator Simulation
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  simulation:
+    runs-on: ubuntu-24.04  # Provides Verilator 5.018+
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install System Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y verilator python3-venv build-essential curl
+
+    - name: Install Bender
+      run: |
+        curl --proto '=https' --tlsv1.2 -sSf https://pulp-platform.github.io/bender/init -o bender-init
+        bash bender-init 0.27.1  # Install specific version
+        # The init script installs to current directory usually? 
+        # Let's use a direct download for reliability
+        rm bender-init
+        wget https://github.com/pulp-platform/bender/releases/download/v0.28.1/bender-0.28.1-x86_64-linux-gnu.tar.gz
+        tar xzf bender-0.28.1-x86_64-linux-gnu.tar.gz
+        sudo mv bender /usr/local/bin/
+        bender --version
+
+    - name: Fetch Dependencies
+      run: |
+        bender update
+        ls -F deps/
+
+    - name: Run Verilator Simulation
+      run: make verilator
