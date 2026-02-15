@@ -1,0 +1,13 @@
+.bender
+xcelium.d
+.venv
+build/
+deps/
+*.log
+*.history
+*.key
+*.err
+*_log.txt
+*.mem
+sw/include/
+doc/rdl/

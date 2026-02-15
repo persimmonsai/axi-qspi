@@ -1,0 +1,218 @@
+addrmap axi_qspi_regs {
+    name = "AXI SPI Controller Registers";
+    desc = "Register map for the AXI SPI Controller";
+
+    default regwidth = 32;
+    default sw = rw;
+    default hw = r;
+
+    reg {
+        name = "Status and Control Register";
+        field {
+            name = "Software Reset";
+            desc = "Write 1 to trigger software reset";
+            sw = w;
+            hw = r;
+            singlepulse; 
+            reset = 0;
+        } sw_rst[4:4];
+
+        field {
+            name = "Trigger RX";
+            desc = "Write 1 to trigger RX operation";
+            sw = w;
+            hw = r;
+            singlepulse;
+            reset = 0;
+        } trig_rx[8:8];
+
+        field {
+            name = "Trigger TX";
+            desc = "Write 1 to trigger TX operation";
+            sw = w;
+            hw = r;
+            singlepulse;
+            reset = 0;
+        } trig_tx[9:9];
+
+        field {
+            name = "RX FIFO Elements";
+            desc = "Number of elements in RX FIFO";
+            sw = r;
+            hw = w;
+        } rx_cnt[19:16];
+
+        field {
+            name = "TX FIFO Elements";
+            desc = "Number of elements in TX FIFO";
+            sw = r;
+            hw = w;
+        } tx_cnt[27:24];
+    } STATUS @0x00;
+
+    reg {
+        name = "Clock Divider";
+        field {
+            name = "Divisor";
+            desc = "Clock Divider Value. F_spi = F_clk / (2 * (div + 1))";
+            sw = rw;
+            hw = r;
+            reset = 2;
+        } div[7:0];
+        field {
+            name = "Bypass Divider";
+            desc = "If 1, bypass divider (F_spi = F_clk)";
+            sw = rw;
+            hw = r;
+            reset = 0;
+        } bypass[8:8];
+        field {
+            name = "Clock Polarity";
+            desc = "0: Idle Low (Mode 0), 1: Idle High (Mode 3)";
+            sw = rw;
+            hw = r;
+            reset = 0;
+        } cpol[31:31];
+    } CLKDIV @0x04;
+
+    reg {
+        name = "SPI Command";
+        field {
+            name = "Command";
+            sw = rw;
+            hw = r;
+        } cmd[31:0];
+    } SPICMD @0x08;
+
+    reg {
+        name = "SPI Address";
+        field {
+            name = "Address";
+            sw = rw;
+            hw = r;
+        } addr[31:0];
+    } SPIADR @0x0C;
+
+    reg {
+        name = "SPI Lengths";
+        field {
+            name = "Lengths";
+            desc = "[7:0] Cmd Len, [15:8] Addr Len, [31:16] Data Len";
+            sw = rw;
+            hw = r;
+        } len[31:0];
+    } SPILEN @0x10;
+
+    reg {
+        name = "SPI Dummy Cycles";
+        field {
+            name = "Dummy";
+            sw = rw;
+            hw = r;
+        } dum[31:0];
+    } SPIDUM @0x14;
+
+    reg {
+        name = "TX FIFO Data";
+        field {
+            name = "Data";
+            sw = w;
+            hw = r;
+            swacc; // Software access signal generation
+        } data[31:0];
+    } TXFIFO @0x18;
+
+    // RXFIFO @ 0x20
+    // Skip 0x1C
+
+    reg {
+        name = "RX FIFO Data";
+        field {
+            name = "Data";
+            sw = r;
+            hw = w;
+            swacc; // Signal read access
+        } data[31:0];
+    } RXFIFO @0x20;
+
+    reg {
+        name = "CS Default";
+        field {
+            name = "Default SC";
+            sw = rw;
+            hw = r;
+        } cs[31:0];
+    } CS_DEF @0x24;
+
+    reg {
+        name = "CS 0 Base Address";
+        field {
+            name = "Address";
+            sw = rw;
+            hw = r;
+        } val[31:0];
+    } CS_A_0 @0x28;
+
+    reg {
+        name = "CS 0 Mask";
+        field {
+            name = "Mask";
+            sw = rw;
+            hw = r;
+        } val[31:0];
+    } CS_M_0 @0x2C;
+
+    reg {
+        name = "CS 1 Base Address";
+        field {
+            name = "Address";
+            sw = rw;
+            hw = r;
+        } val[31:0];
+    } CS_A_1 @0x30;
+
+    reg {
+        name = "CS 1 Mask";
+        field {
+            name = "Mask";
+            sw = rw;
+            hw = r;
+        } val[31:0];
+    } CS_M_1 @0x34;
+
+    reg {
+        name = "CS 2 Base Address";
+        field {
+            name = "Address";
+            sw = rw;
+            hw = r;
+        } val[31:0];
+    } CS_A_2 @0x38;
+
+    reg {
+        name = "CS 2 Mask";
+        field {
+            name = "Mask";
+            sw = rw;
+            hw = r;
+        } val[31:0];
+    } CS_M_2 @0x3C;
+
+    reg {
+        name = "CS 3 Base Address";
+        field {
+            name = "Address";
+            sw = rw;
+            hw = r;
+        } val[31:0];
+    } CS_A_3 @0x40;
+
+    reg {
+        name = "CS 3 Mask";
+        field {
+            name = "Mask";
+            sw = rw;
+            hw = r;
+        } val[31:0];
+    } CS_M_3 @0x44;
+};

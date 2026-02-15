@@ -1,0 +1,22 @@
+package:
+  name: axi_qspi
+  authors:
+    - "Persimmons Inc"
+
+dependencies:
+  axi: { git: "https://github.com/pulp-platform/axi", version: 0.39.4 }
+
+workspace:
+  checkout_dir: deps
+
+sources:
+
+  - target: simulation
+    files:
+      - src/axi_qspi_regs_pkg.sv
+      - src/axi_qspi_regs.sv
+      - src/spi_flash_model.sv
+      - src/spi_controller.sv
+      - src/axi_qspi_controller.sv
+      - tb/tb_axi_qspi_controller.sv
+      - tb/spi.v
