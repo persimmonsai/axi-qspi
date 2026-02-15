@@ -10,13 +10,13 @@ workspace:
   checkout_dir: deps
 
 sources:
+  - src/axi_qspi_regs_pkg.sv
+  - src/axi_qspi_regs.sv
+  - src/spi_flash_model.sv
+  - src/spi_controller.sv
+  - src/axi_qspi_controller.sv
 
   - target: simulation
     files:
-      - src/axi_qspi_regs_pkg.sv
-      - src/axi_qspi_regs.sv
-      - src/spi_flash_model.sv
-      - src/spi_controller.sv
-      - src/axi_qspi_controller.sv
       - tb/tb_axi_qspi_controller.sv
       - tb/spi.v
