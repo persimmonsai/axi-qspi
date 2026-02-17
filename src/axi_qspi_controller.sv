@@ -348,6 +348,7 @@ module axi_qspi_controller #(
   axi_qspi_regs__out_t hwif_out;
 
   // Signal Mapping using hwif structs
+  assign hwif_in.rst_n = s_axi_aresetn;
   assign hwif_in.STATUS.rx_cnt.next = rx_lvl;
   assign hwif_in.STATUS.tx_cnt.next = tx_lvl;
   assign hwif_in.RXFIFO.data.next = rx_data[31:0];  // Truncate if wider
@@ -562,7 +563,7 @@ module axi_qspi_controller #(
       .cfg_spiaddr_i(init_active ? 32'd0 : ctrl_spiaddr),
       .cfg_spilen_i(init_active ? init_spilen : ctrl_spilen),
       .cfg_spidum_i(init_active ? 32'd0 : ctrl_spidum),
-      .cfg_cs_index_i(init_active ? 2'b00 : ar_cs_index),
+      .cfg_cs_index_i(init_active ? 2'b00 : cs_index),
 
       .trigger_rx_i(init_active ? 1'b0 : ctrl_trig_rx),
       .trigger_tx_i(init_active ? init_trig_tx : ctrl_trig_tx),

@@ -16,7 +16,7 @@ sources:
   - src/spi_controller.sv
   - src/axi_qspi_controller.sv
 
-  - target: simulation
+  - target: all(simulation,test)
     files:
       - tb/tb_axi_qspi_controller.sv
       - tb/spi.v

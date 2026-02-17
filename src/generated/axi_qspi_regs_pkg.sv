@@ -29,6 +29,7 @@ package axi_qspi_regs_pkg;
     } axi_qspi_regs__RXFIFO__in_t;
 
     typedef struct {
+        logic rst_n;
         axi_qspi_regs__STATUS__in_t STATUS;
         axi_qspi_regs__RXFIFO__in_t RXFIFO;
     } axi_qspi_regs__in_t;

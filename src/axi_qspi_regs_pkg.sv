@@ -3,9 +3,9 @@
 
 package axi_qspi_regs_pkg;
 
-    localparam AXI_SPI_REGS_DATA_WIDTH = 32;
-    localparam AXI_SPI_REGS_MIN_ADDR_WIDTH = 7;
-    localparam AXI_SPI_REGS_SIZE = 'h48;
+    localparam AXI_QSPI_REGS_DATA_WIDTH = 32;
+    localparam AXI_QSPI_REGS_MIN_ADDR_WIDTH = 7;
+    localparam AXI_QSPI_REGS_SIZE = 'h48;
 
     typedef struct {
         logic [3:0] next;
@@ -29,6 +29,7 @@ package axi_qspi_regs_pkg;
     } axi_qspi_regs__RXFIFO__in_t;
 
     typedef struct {
+        logic rst_n;
         axi_qspi_regs__STATUS__in_t STATUS;
         axi_qspi_regs__RXFIFO__in_t RXFIFO;
     } axi_qspi_regs__in_t;

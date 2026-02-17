@@ -6,6 +6,13 @@ addrmap axi_qspi_regs {
     default sw = rw;
     default hw = r;
 
+    signal {
+        cpuif_reset;
+        field_reset;
+        async;
+        activelow;
+    } rst_n;
+
     reg {
         name = "Status and Control Register";
         field {
@@ -141,6 +148,7 @@ addrmap axi_qspi_regs {
             name = "Default SC";
             sw = rw;
             hw = r;
+            reset = 0; // Initialize to 0 (CS0 selected)
         } cs[31:0];
     } CS_DEF @0x24;
 

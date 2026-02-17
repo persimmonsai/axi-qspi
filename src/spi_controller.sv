@@ -678,7 +678,18 @@ module spi_controller #(
     endcase
   end
 
-  // Trigger Latching FSM
+  // Trigger Latching // Sync
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      trigger_rx_q <= '0;
+      trigger_tx_q <= '0;
+    end else begin
+      trigger_rx_q <= trigger_rx_i;
+      trigger_tx_q <= trigger_tx_i;
+    end
+  end
+
+  // Main FSM
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       state_q <= IDLE;
@@ -686,12 +697,8 @@ module spi_controller #(
       shift_reg_q <= 0;
       tx_word_cnt_q <= 0;
       rx_word_accum_q <= 0;
-      trigger_tx_q <= 0;
-      trigger_rx_q <= 0;
     end else if (sw_rst_i) begin
       state_q <= IDLE;
-      trigger_tx_q <= 0;
-      trigger_rx_q <= 0;
     end else begin
       state_q <= state_d;
       if (state_q != state_d)
@@ -700,8 +707,7 @@ module spi_controller #(
       shift_reg_q <= shift_reg_d;
       tx_word_cnt_q <= tx_word_cnt_d;
       rx_word_accum_q <= rx_word_accum_d;
-      trigger_tx_q <= trigger_tx_d;
-      trigger_rx_q <= trigger_rx_d;
+      rx_word_accum_q <= rx_word_accum_d;
     end
   end
 

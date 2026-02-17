@@ -23,6 +23,7 @@ module spi_flash_model (
   logic       qpi_active = 0;
   logic       is_ddr = 0;  // Current command is DDR
   logic       is_sfdp_read = 0;  // Current command is Read SFDP
+  logic       is_rdid = 0;  // Current command is Read ID
   logic       reset_enable = 0;
   time        busy_until = 0;
 
@@ -137,6 +138,7 @@ module spi_flash_model (
       current_mode <= MODE_SPI;
       is_ddr <= 0;
       is_sfdp_read <= 0;
+      is_rdid <= 0;
       bit_cnt <= 0;
     end else begin
       // Determine if we should process this edge
@@ -160,6 +162,7 @@ module spi_flash_model (
             shift_reg <= 0;
             is_ddr <= 0;
             is_sfdp_read <= 0;
+            is_rdid <= 0;
 
             if (qpi_active) begin
               current_mode <= MODE_QUAD;
@@ -238,15 +241,28 @@ module spi_flash_model (
                     // Read / Prog / Erase
                     8'h03, 8'h0B, 8'h3B, 8'h6B, 8'h02, 8'h20, 8'hD8, 8'h0D, 8'hBD, 8'hED,  // DTR Reads
                     8'h13, 8'h0C, 8'h12, 8'h3C, 8'h6C: begin
+                      $display("[SPI_MODEL] CMD Received: %h (Read/Prog/Erase)", next_shift);
                       state <= ST_ADDR;
                     end
 
                     8'h9F: begin  // RDID
-                      state   <= ST_DATA_TX;
-                      tx_byte <= 8'h01;
+                      $display("[SPI_MODEL] CMD Received: 9F (RDID)");
+                      state <= ST_DATA_TX;
+                      tx_byte <= 8'hEF;  // MFID
+                      // We need a mechanism to cycle through ID bytes: EF, 40, 18
+                      // For now, let's just hack the address to point to a "ID ROM" or similar?
+                      // Or just rely on get_mem_byte?
+                      // The current logic in ST_DATA_TX uses get_mem_byte(addr+1).
+                      // Let's interpret 'addr' as index into ID sequence for RDID.
+                      is_sfdp_read <= 0;
+                      // We can overload 'is_sfdp_read' or add 'is_rdid'.
+                      // Let's add 'is_rdid'
+                      is_rdid <= 1;
                       bit_cnt <= 0;
+                      addr <= 0;
                     end
                     8'h05: begin  // RDSR
+                      $display("[SPI_MODEL] CMD Received: 05 (RDSR)");
                       state   <= ST_DATA_TX;
                       tx_byte <= status_reg | (is_busy() ? 8'h01 : 8'h00);  // Return BUSY if set
                       bit_cnt <= 0;
@@ -442,7 +458,13 @@ module spi_flash_model (
               bit_cnt <= 0;
               // Byte Done
               addr <= addr + 1;
-              if (is_sfdp_read) begin
+              if (is_rdid) begin
+                case (addr + 1)
+                  1: tx_byte <= 8'h40;
+                  2: tx_byte <= 8'h18;
+                  default: tx_byte <= 8'hFF;
+                endcase
+              end else if (is_sfdp_read) begin
                 if ((addr + 1) < SFDP_SIZE) tx_byte <= sfdp_rom[addr+1];
                 else tx_byte <= 8'hFF;
               end else begin

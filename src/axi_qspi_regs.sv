@@ -62,8 +62,8 @@ module axi_qspi_regs (
     logic axil_resp_acked;
 
     // Transaction request acceptance
-    always_ff @(posedge clk) begin
-        if(rst) begin
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
             axil_prev_was_rd <= '0;
             axil_arvalid <= '0;
             axil_araddr <= '0;
@@ -159,8 +159,8 @@ module axi_qspi_regs (
     logic [1:0] axil_resp_wptr;
     logic [1:0] axil_resp_rptr;
 
-    always_ff @(posedge clk) begin
-        if(rst) begin
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
             for(int i=0; i<2; i++) begin
                 axil_resp_buffer[i].is_wr <= '0;
                 axil_resp_buffer[i].err <= '0;
@@ -514,8 +514,8 @@ module axi_qspi_regs (
         field_combo.STATUS.sw_rst.next = next_c;
         field_combo.STATUS.sw_rst.load_next = load_next_c;
     end
-    always_ff @(posedge clk) begin
-        if(rst) begin
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
             field_storage.STATUS.sw_rst.value <= 1'h0;
         end else begin
             if(field_combo.STATUS.sw_rst.load_next) begin
@@ -540,8 +540,8 @@ module axi_qspi_regs (
         field_combo.STATUS.trig_rx.next = next_c;
         field_combo.STATUS.trig_rx.load_next = load_next_c;
     end
-    always_ff @(posedge clk) begin
-        if(rst) begin
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
             field_storage.STATUS.trig_rx.value <= 1'h0;
         end else begin
             if(field_combo.STATUS.trig_rx.load_next) begin
@@ -566,8 +566,8 @@ module axi_qspi_regs (
         field_combo.STATUS.trig_tx.next = next_c;
         field_combo.STATUS.trig_tx.load_next = load_next_c;
     end
-    always_ff @(posedge clk) begin
-        if(rst) begin
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
             field_storage.STATUS.trig_tx.value <= 1'h0;
         end else begin
             if(field_combo.STATUS.trig_tx.load_next) begin
@@ -589,8 +589,8 @@ module axi_qspi_regs (
         field_combo.CLKDIV.div.next = next_c;
         field_combo.CLKDIV.div.load_next = load_next_c;
     end
-    always_ff @(posedge clk) begin
-        if(rst) begin
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
             field_storage.CLKDIV.div.value <= 8'h2;
         end else begin
             if(field_combo.CLKDIV.div.load_next) begin
@@ -612,8 +612,8 @@ module axi_qspi_regs (
         field_combo.CLKDIV.bypass.next = next_c;
         field_combo.CLKDIV.bypass.load_next = load_next_c;
     end
-    always_ff @(posedge clk) begin
-        if(rst) begin
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
             field_storage.CLKDIV.bypass.value <= 1'h0;
         end else begin
             if(field_combo.CLKDIV.bypass.load_next) begin
@@ -635,8 +635,8 @@ module axi_qspi_regs (
         field_combo.CLKDIV.cpol.next = next_c;
         field_combo.CLKDIV.cpol.load_next = load_next_c;
     end
-    always_ff @(posedge clk) begin
-        if(rst) begin
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
             field_storage.CLKDIV.cpol.value <= 1'h0;
         end else begin
             if(field_combo.CLKDIV.cpol.load_next) begin
@@ -755,9 +755,13 @@ module axi_qspi_regs (
         field_combo.CS_DEF.cs.next = next_c;
         field_combo.CS_DEF.cs.load_next = load_next_c;
     end
-    always_ff @(posedge clk) begin
-        if(field_combo.CS_DEF.cs.load_next) begin
-            field_storage.CS_DEF.cs.value <= field_combo.CS_DEF.cs.next;
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
+            field_storage.CS_DEF.cs.value <= 32'h0;
+        end else begin
+            if(field_combo.CS_DEF.cs.load_next) begin
+                field_storage.CS_DEF.cs.value <= field_combo.CS_DEF.cs.next;
+            end
         end
     end
     assign hwif_out.CS_DEF.cs.value = field_storage.CS_DEF.cs.value;
