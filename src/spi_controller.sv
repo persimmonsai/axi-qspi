@@ -33,6 +33,7 @@ module spi_controller #(
     // FIFO Status for Regs
     output logic [3:0] tx_elements_o,
     output logic [3:0] rx_elements_o,
+    output logic       busy_o,
 
     // SPI Pad Interface
     output logic       spi_clk_o,
@@ -273,6 +274,7 @@ module spi_controller #(
 
   assign clk_run   = (state_q != IDLE && state_q != WAIT_CS && state_q != PRE_FINISH && state_q != FINISH);
   assign op_done_o = (state_q == WAIT_CS);
+  assign busy_o = (state_q != IDLE);
 
   always_comb begin
     state_d = state_q;

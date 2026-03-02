@@ -471,7 +471,7 @@ module axi_qspi_controller #(
   // Regs need immediate status. Mem can wait.
   // Assume Reg trigger is explicit.
   logic spi_busy;
-  assign spi_busy = (u_spictrl.state_q != 0);
+  // assign spi_busy = (u_spictrl.state_q != 0);
   // Added op_done output to controller.
 
   // Controller Mux inputs
@@ -576,6 +576,7 @@ module axi_qspi_controller #(
       .rx_fifo_pop_i  (rx_pop),
       .rx_fifo_data_o (rx_data),
       .rx_fifo_valid_o(rx_valid),
+      .busy_o         (spi_busy),
       .tx_elements_o  (tx_lvl),
       .rx_elements_o  (rx_lvl),
 
