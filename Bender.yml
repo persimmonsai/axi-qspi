@@ -12,7 +12,6 @@ workspace:
 sources:
   - src/axi_qspi_regs_pkg.sv
   - src/axi_qspi_regs.sv
-  - src/spi_flash_model.sv
   - src/spi_controller.sv
   - src/axi_qspi_controller.sv
 
@@ -20,3 +19,5 @@ sources:
     files:
       - tb/tb_axi_qspi_controller.sv
       - tb/spi.v
+      - src/spi_flash_model.sv
+
