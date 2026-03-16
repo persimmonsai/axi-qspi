@@ -18,6 +18,6 @@ sources:
   - target: all(simulation,test)
     files:
       - tb/tb_axi_qspi_controller.sv
-      - tb/spi.v
+      #- tb/spi.v
       - src/spi_flash_model.sv
 
