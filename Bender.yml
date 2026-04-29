@@ -15,9 +15,16 @@ sources:
   - src/spi_controller.sv
   - src/axi_qspi_controller.sv
 
+  # Behavioural SPI flash model is needed by any simulation that exercises
+  # the QSPI controller (not only this package's testbench).  Make it
+  # available under plain `target: simulation` so integrators can pull it
+  # in without enabling the `test` target.
+  - target: simulation
+    files:
+      - src/spi_flash_model.sv
+
   - target: all(simulation,test)
     files:
       - tb/tb_axi_qspi_controller.sv
       #- tb/spi.v
-      - src/spi_flash_model.sv
 
