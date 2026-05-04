@@ -183,7 +183,11 @@ module axi_qspi_controller #(
   logic mem_arvalid, mem_arready;
   logic [AXI4_RDATA_WIDTH-1:0] mem_rdata;
   logic mem_rvalid, mem_rready;
-  logic mem_rlast;
+  // mem_rlast is only ever assigned to 0 in this controller (mem reads are
+  // single-beat -- s_axi_rlast is forced to 1 on the regs_rvalid path).
+  // Tie to a constant so synthesis does not infer an unclocked latch enable
+  // (lint flagged it as "Sequential clock pins without clock waveform").
+  wire mem_rlast = 1'b0;
   logic [AXI4_ID_WIDTH-1:0] mem_rid;
   logic [AXI4_ID_WIDTH-1:0] mem_rid_latched;  // Unused if using mem_rid directly in FSM
 
@@ -737,7 +741,7 @@ module axi_qspi_controller #(
       mem_rdata <= 0;
       mem_spi_start <= 0;
       mem_rid <= 0;
-      mem_rlast <= 0;
+      // mem_rlast is now a constant wire (see declaration); no reset assignment needed.
       mem_cs_index_latched <= 0;
     end else begin
       // Defaults
