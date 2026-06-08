@@ -88,6 +88,7 @@ addrmap axi_qspi_regs {
             name = "Command";
             sw = rw;
             hw = r;
+            reset = 0;
         } cmd[31:0];
     } SPICMD @0x08;
 
@@ -97,6 +98,7 @@ addrmap axi_qspi_regs {
             name = "Address";
             sw = rw;
             hw = r;
+            reset = 0;
         } addr[31:0];
     } SPIADR @0x0C;
 
@@ -107,6 +109,7 @@ addrmap axi_qspi_regs {
             desc = "[7:0] Cmd Len, [15:8] Addr Len, [31:16] Data Len";
             sw = rw;
             hw = r;
+            reset = 0;
         } len[31:0];
     } SPILEN @0x10;
 
@@ -116,6 +119,7 @@ addrmap axi_qspi_regs {
             name = "Dummy";
             sw = rw;
             hw = r;
+            reset = 0;
         } dum[31:0];
     } SPIDUM @0x14;
 

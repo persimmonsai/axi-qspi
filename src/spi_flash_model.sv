@@ -87,10 +87,14 @@ module spi_flash_model (
 
   function logic [7:0] get_mem_byte(input logic [31:0] a);
     if (mem.exists(a)) begin
+      `ifdef DEBUG_QSPI_PRINT
       $display("[SPI_MODEL] Get Byte: Addr=%h Data=%h", a, mem[a]);
+      `endif
       return mem[a];
     end else begin
+      `ifdef DEBUG_QSPI_PRINT
       $display("[SPI_MODEL] Get Byte: Addr=%h Data=FF (Miss)", a);
+      `endif
       return 8'hFF;
     end
   endfunction
@@ -344,7 +348,9 @@ module spi_flash_model (
               // Accumulate address by shifting left and appending new byte
               next_addr = {addr[23:0], next_shift};
               addr <= next_addr;
-              // $display("[SPI_MODEL] Accumulating Addr: NewAddr=%h, Byte=%h, bit_cnt=%0d, full_cnt=%0d, 4b=%0d", next_addr, next_shift, (bit_cnt+inc), full_cnt, addr_mode_4b);
+              `ifdef DEBUG_QSPI_PRINT
+              $display("[SPI_MODEL] Accumulating Addr: NewAddr=%h, Byte=%h, bit_cnt=%0d, full_cnt=%0d, 4b=%0d", next_addr, next_shift, (bit_cnt+inc), full_cnt, addr_mode_4b);
+              `endif
 
               if (bit_cnt + inc >= full_cnt) begin
                 // Address complete
@@ -452,12 +458,21 @@ module spi_flash_model (
             else if (current_mode == MODE_DUAL) bits_per_edge = 2;
             else bits_per_edge = 1;
 
+            `ifdef DEBUG_QSPI_PRINT
+            $display("[FLASH_TX] t=%0t posedge#%0d: addr=%h bit_cnt=%0d tx_byte=%h bpe=%0d io1_out=%b",
+                     $time, bit_cnt, addr, bit_cnt, tx_byte, bits_per_edge, io1_out);
+            `endif
+
             bit_cnt <= bit_cnt + bits_per_edge;
 
             if (bit_cnt + bits_per_edge >= 8) begin
               bit_cnt <= 0;
               // Byte Done
               addr <= addr + 1;
+              `ifdef DEBUG_QSPI_PRINT
+              $display("[FLASH_TX] BYTE DONE: addr was %h, now %h, next tx_byte=mem[%h]",
+                       addr, addr+1, addr+1);
+              `endif
               if (is_rdid) begin
                 case (addr + 1)
                   1: tx_byte <= 8'h40;
@@ -556,7 +571,9 @@ module spi_flash_model (
   // =========================================================================
   task write_mem(input int a, input logic [7:0] d);
     mem[a] = d;
+    `ifdef DEBUG_QSPI_PRINT
     $display("[SPI_MODEL] Backdoor Write: Addr=%h Data=%h", a, d);
+    `endif
   endtask
 
   task reset_internals();

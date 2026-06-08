@@ -654,13 +654,20 @@ module axi_qspi_regs (
         if(decoded_reg_strb.SPICMD && decoded_req_is_wr) begin // SW write
             next_c = (field_storage.SPICMD.cmd.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
             load_next_c = '1;
+            `ifdef DEBUG_QSPI_PRINT
+            $display("[REGS] SPICMD write: data=%h biten=%h t=%0t", decoded_wr_data, decoded_wr_biten, $time);
+            `endif
         end
         field_combo.SPICMD.cmd.next = next_c;
         field_combo.SPICMD.cmd.load_next = load_next_c;
     end
-    always_ff @(posedge clk) begin
-        if(field_combo.SPICMD.cmd.load_next) begin
-            field_storage.SPICMD.cmd.value <= field_combo.SPICMD.cmd.next;
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
+            field_storage.SPICMD.cmd.value <= 32'h0;
+        end else begin
+            if(field_combo.SPICMD.cmd.load_next) begin
+                field_storage.SPICMD.cmd.value <= field_combo.SPICMD.cmd.next;
+            end
         end
     end
     assign hwif_out.SPICMD.cmd.value = field_storage.SPICMD.cmd.value;
@@ -673,13 +680,20 @@ module axi_qspi_regs (
         if(decoded_reg_strb.SPIADR && decoded_req_is_wr) begin // SW write
             next_c = (field_storage.SPIADR.addr.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
             load_next_c = '1;
+            `ifdef DEBUG_QSPI_PRINT
+            $display("[REGS] SPIADR write: data=%h biten=%h t=%0t", decoded_wr_data, decoded_wr_biten, $time);
+            `endif
         end
         field_combo.SPIADR.addr.next = next_c;
         field_combo.SPIADR.addr.load_next = load_next_c;
     end
-    always_ff @(posedge clk) begin
-        if(field_combo.SPIADR.addr.load_next) begin
-            field_storage.SPIADR.addr.value <= field_combo.SPIADR.addr.next;
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
+            field_storage.SPIADR.addr.value <= 32'h0;
+        end else begin
+            if(field_combo.SPIADR.addr.load_next) begin
+                field_storage.SPIADR.addr.value <= field_combo.SPIADR.addr.next;
+            end
         end
     end
     assign hwif_out.SPIADR.addr.value = field_storage.SPIADR.addr.value;
@@ -692,13 +706,20 @@ module axi_qspi_regs (
         if(decoded_reg_strb.SPILEN && decoded_req_is_wr) begin // SW write
             next_c = (field_storage.SPILEN.len.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
             load_next_c = '1;
+            `ifdef DEBUG_QSPI_PRINT
+            $display("[REGS] SPILEN write: data=%h biten=%h t=%0t", decoded_wr_data, decoded_wr_biten, $time);
+            `endif
         end
         field_combo.SPILEN.len.next = next_c;
         field_combo.SPILEN.len.load_next = load_next_c;
     end
-    always_ff @(posedge clk) begin
-        if(field_combo.SPILEN.len.load_next) begin
-            field_storage.SPILEN.len.value <= field_combo.SPILEN.len.next;
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
+            field_storage.SPILEN.len.value <= 32'h0;
+        end else begin
+            if(field_combo.SPILEN.len.load_next) begin
+                field_storage.SPILEN.len.value <= field_combo.SPILEN.len.next;
+            end
         end
     end
     assign hwif_out.SPILEN.len.value = field_storage.SPILEN.len.value;
@@ -711,13 +732,20 @@ module axi_qspi_regs (
         if(decoded_reg_strb.SPIDUM && decoded_req_is_wr) begin // SW write
             next_c = (field_storage.SPIDUM.dum.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
             load_next_c = '1;
+            `ifdef DEBUG_QSPI_PRINT
+            $display("[REGS] SPIDUM write: data=%h biten=%h t=%0t", decoded_wr_data, decoded_wr_biten, $time);
+            `endif
         end
         field_combo.SPIDUM.dum.next = next_c;
         field_combo.SPIDUM.dum.load_next = load_next_c;
     end
-    always_ff @(posedge clk) begin
-        if(field_combo.SPIDUM.dum.load_next) begin
-            field_storage.SPIDUM.dum.value <= field_combo.SPIDUM.dum.next;
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
+            field_storage.SPIDUM.dum.value <= 32'h0;
+        end else begin
+            if(field_combo.SPIDUM.dum.load_next) begin
+                field_storage.SPIDUM.dum.value <= field_combo.SPIDUM.dum.next;
+            end
         end
     end
     assign hwif_out.SPIDUM.dum.value = field_storage.SPIDUM.dum.value;

@@ -330,6 +330,10 @@ module spi_controller #(
               state_d = ADDR;
               bit_cnt_d = cfg_spilen_i[15:8];
               shift_reg_d = cfg_spiaddr_i;
+              `ifdef DEBUG_QSPI_PRINT
+              $display("[CTRL-ADDR] CMD->ADDR t=%0t cfg_spiaddr=%h cfg_spilen=%h bit_cnt_d=%0d",
+                       $time, cfg_spiaddr_i, cfg_spilen_i, cfg_spilen_i[15:8]);
+              `endif
             end else if (cfg_spidum_i > 0) begin
               state_d   = DUMMY;
               bit_cnt_d = cfg_spidum_i;
@@ -394,6 +398,10 @@ module spi_controller #(
         end else begin
           // Std Addr
           if (bit_cnt_q > 0) spi_sdo_o[0] = shift_reg_q[bit_cnt_q-1];
+          `ifdef DEBUG_QSPI_PRINT
+          if (bit_cnt_q > 0) $display("[CTRL-ADDR] t=%0t bit_cnt=%0d shift_reg=%h sdo0=%b",
+                                       $time, bit_cnt_q, shift_reg_q, shift_reg_q[bit_cnt_q-1]);
+          `endif
           if (pulse_fe_effective) begin
             if (bit_cnt_q == 1) begin
               // Next
@@ -627,8 +635,10 @@ module spi_controller #(
             };  // MISO is IO1 in Std Mode? 
             // Wait, standard SPI: MOSI=IO0, MISO=IO1.
             // Correct.
+            `ifdef DEBUG_QSPI_PRINT
             $display("TIME=%t [CTRL] Sampled Bit: %b (SDI=%b) ShiftReg=%h", $time, spi_sdi_i[1],
                      spi_sdi_i, shift_reg_d);
+            `endif
 
             if (tx_word_cnt_q >= FIFO_DATA_WIDTH - 1) begin
               rx_push_enable = 1;

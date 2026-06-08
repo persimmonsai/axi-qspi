@@ -436,8 +436,16 @@ module axi_qspi_controller #(
 
       .s_axil_wvalid(regs_req.w_valid),
       .s_axil_wready(s_axil_wready_flat),
-      .s_axil_wdata (regs_req.w.data[31:0]),
-      .s_axil_wstrb (regs_req.w.strb[3:0]),
+      // 64-bit AXI bus → 32-bit register file: select the correct 32-bit lane
+      // based on addr[2]. For addr[2]=1 the store data/strobe lands in the
+      // upper half of the 64-bit bus (bytes 4–7); for addr[2]=0 it is in the
+      // lower half (bytes 0–3).
+      .s_axil_wdata ((AXI4_WDATA_WIDTH > 32 && regs_req.aw.addr[2]) ?
+                     regs_req.w.data[AXI4_WDATA_WIDTH-1 -: 32] :
+                     regs_req.w.data[31:0]),
+      .s_axil_wstrb ((AXI4_WDATA_WIDTH > 32 && regs_req.aw.addr[2]) ?
+                     regs_req.w.strb[AXI4_WDATA_WIDTH/8-1 -: 4] :
+                     regs_req.w.strb[3:0]),
 
       .s_axil_bvalid(s_axil_bvalid_flat),
       .s_axil_bready(regs_req.b_ready),
