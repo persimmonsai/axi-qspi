@@ -183,11 +183,11 @@ module axi_qspi_controller #(
   logic mem_arvalid, mem_arready;
   logic [AXI4_RDATA_WIDTH-1:0] mem_rdata;
   logic mem_rvalid, mem_rready;
-  // mem_rlast is only ever assigned to 0 in this controller (mem reads are
-  // single-beat -- s_axi_rlast is forced to 1 on the regs_rvalid path).
-  // Tie to a constant so synthesis does not infer an unclocked latch enable
-  // (lint flagged it as "Sequential clock pins without clock waveform").
-  wire mem_rlast = 1'b0;
+  // Burst support: latch ARLEN and track how many beats have been sent.
+  // rlast is asserted on the final beat (beat_cnt == arlen_latched).
+  logic [7:0] mem_arlen_latched;
+  logic [7:0] mem_beat_cnt;
+  wire mem_rlast = mem_rvalid && (mem_beat_cnt == mem_arlen_latched);
   logic [AXI4_ID_WIDTH-1:0] mem_rid;
   logic [AXI4_ID_WIDTH-1:0] mem_rid_latched;  // Unused if using mem_rid directly in FSM
 
@@ -749,8 +749,9 @@ module axi_qspi_controller #(
       mem_rdata <= 0;
       mem_spi_start <= 0;
       mem_rid <= 0;
-      // mem_rlast is now a constant wire (see declaration); no reset assignment needed.
       mem_cs_index_latched <= 0;
+      mem_arlen_latched <= 0;
+      mem_beat_cnt <= 0;
     end else begin
       // Defaults
       mem_arready   <= 0;
@@ -758,22 +759,22 @@ module axi_qspi_controller #(
 
       case (m_state)
         M_IDLE: begin
-          if (mem_arvalid && !spi_busy) begin  // Wait for idle
-            mem_arready <= 1;  // Ack AR
-            m_state <= M_WAIT;
-            mem_spi_addr <= mem_araddr - 32'h1000;
-            mem_spi_start <= 1;
-            mem_spi_addr <= mem_araddr - 32'h1000;
-            mem_spi_start <= 1;
-            mem_rid <= s_axi_arid;  // Latch ID
-            mem_cs_index_latched <= ar_cs_index;  // Latch CS Index
+          if (mem_arvalid && !spi_busy) begin
+            mem_arready          <= 1;
+            m_state              <= M_WAIT;
+            mem_spi_addr         <= (mem_araddr - 32'h1000) & ~32'h7; // align to 8-byte AXI beat
+            mem_spi_start        <= 1;
+            mem_rid              <= s_axi_arid;
+            mem_cs_index_latched <= ar_cs_index;
+            mem_arlen_latched    <= s_axi_arlen;
+            mem_beat_cnt         <= 0;
           end
         end
 
         M_WAIT: begin
           if (op_done) begin
             m_state <= M_DONE;
-            // Byte Swap for AXI (LE) - Parameterized
+            // Byte-swap: SPI controller packs bytes MSB-first; AXI is LE.
             for (int i = 0; i < AXI4_RDATA_WIDTH / 8; i++) begin
               mem_rdata[i*8+:8] <= rx_data[(AXI4_RDATA_WIDTH/8-1-i)*8+:8];
             end
@@ -782,9 +783,17 @@ module axi_qspi_controller #(
 
         M_DONE: begin
           mem_rvalid <= 1;
-          if (mem_rready) begin
+          if (mem_rvalid && mem_rready) begin
             mem_rvalid <= 0;
-            m_state <= M_IDLE;
+            if (mem_beat_cnt < mem_arlen_latched) begin
+              // More beats remain in the burst: advance address and re-trigger.
+              mem_beat_cnt  <= mem_beat_cnt + 1;
+              mem_spi_addr  <= mem_spi_addr + (AXI4_RDATA_WIDTH / 8);
+              mem_spi_start <= 1;
+              m_state       <= M_WAIT;
+            end else begin
+              m_state <= M_IDLE;
+            end
           end
         end
       endcase
