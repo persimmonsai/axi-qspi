@@ -75,7 +75,6 @@ module spi_controller #(
     end else begin
       // TX Logic
       if (tx_fifo_push_i && tx_count < 16) begin
-        tx_fifo[tx_wr_ptr] <= tx_fifo_data_i;
         tx_wr_ptr <= tx_wr_ptr + 1;
         tx_count <= tx_count + 1;  // Assuming no simultaneous pop
       end else if (tx_pop_enable && tx_count > 0) begin
@@ -85,13 +84,26 @@ module spi_controller #(
 
       // RX Logic
       if (rx_push_enable && rx_count < 16) begin
-        rx_fifo[rx_wr_ptr] <= rx_push_data;
         rx_wr_ptr <= rx_wr_ptr + 1;
         rx_count <= rx_count + 1;
       end else if (rx_fifo_pop_i && rx_count > 0) begin
         rx_rd_ptr <= rx_rd_ptr + 1;
         rx_count  <= rx_count - 1;
       end
+    end
+  end
+
+  // FIFO storage arrays — intentionally have no reset (matches prior behavior: neither
+  // array was ever assigned in the reset branch above, only the pointers/counts were).
+  // Split into their own reset-less block so structural CDC/RDC tools see no reset
+  // signal in these registers' D-pin fan-in, instead of flagging RST_RS_RIDP for a
+  // reset that only ever gated pointers/counts elsewhere, never this storage.
+  always_ff @(posedge clk_i) begin
+    if (tx_fifo_push_i && tx_count < 16) begin
+      tx_fifo[tx_wr_ptr] <= tx_fifo_data_i;
+    end
+    if (rx_push_enable && rx_count < 16) begin
+      rx_fifo[rx_wr_ptr] <= rx_push_data;
     end
   end
 

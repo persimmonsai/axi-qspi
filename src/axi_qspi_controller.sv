@@ -762,7 +762,6 @@ module axi_qspi_controller #(
           if (mem_arvalid && !spi_busy) begin
             mem_arready          <= 1;
             m_state              <= M_WAIT;
-            mem_spi_addr         <= (mem_araddr - 32'h1000) & ~32'h7; // align to 8-byte AXI beat
             mem_spi_start        <= 1;
             mem_rid              <= s_axi_arid;
             mem_cs_index_latched <= ar_cs_index;
@@ -788,7 +787,6 @@ module axi_qspi_controller #(
             if (mem_beat_cnt < mem_arlen_latched) begin
               // More beats remain in the burst: advance address and re-trigger.
               mem_beat_cnt  <= mem_beat_cnt + 1;
-              mem_spi_addr  <= mem_spi_addr + (AXI4_RDATA_WIDTH / 8);
               mem_spi_start <= 1;
               m_state       <= M_WAIT;
             end else begin
@@ -798,6 +796,27 @@ module axi_qspi_controller #(
         end
       endcase
     end
+  end
+
+  // mem_spi_addr — intentionally has no reset (matches prior behavior: it was never
+  // assigned in the reset branch above). Split into its own reset-less block, gated
+  // on the same m_state/conditions as the state machine above, so structural CDC/RDC
+  // tools see no reset signal in this register's D-pin fan-in instead of flagging
+  // RST_RS_RIDP for a reset that never actually applied to this register.
+  always_ff @(posedge s_axi_aclk) begin
+    case (m_state)
+      M_IDLE: begin
+        if (mem_arvalid && !spi_busy) begin
+          mem_spi_addr <= (mem_araddr - 32'h1000) & ~32'h7;  // align to 8-byte AXI beat
+        end
+      end
+      M_DONE: begin
+        if (mem_rvalid && mem_rready && mem_beat_cnt < mem_arlen_latched) begin
+          mem_spi_addr <= mem_spi_addr + (AXI4_RDATA_WIDTH / 8);
+        end
+      end
+      default: ;
+    endcase
   end
 
   assign events_o = 0;
