@@ -1312,8 +1312,8 @@ module tb_axi_qspi_controller;
 
     // Check erase
 `ifndef USE_MX25L12873F
-    if (flash_model.mem.exists(32'h1000)) begin
-      $fatal(1, "[TB] Error: Sector Erase failed. Mem[0x1000] exists.");
+    if (flash_model.mem[32'h1000] !== 8'hff) begin
+      $fatal(1, "[TB] Error: Sector Erase failed. Mem[0x1000] was not erased.");
     end else begin
       $display("[TB] Sector Erase Success.");
     end

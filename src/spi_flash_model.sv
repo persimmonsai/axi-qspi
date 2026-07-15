@@ -1,651 +1,499 @@
 `timescale 1ns / 1ps
 
-module spi_flash_model (
-    inout wire SI,           // IO0
-    inout wire SO,           // IO1
-    input wire SCK,
-    input wire CSNeg,
-    inout wire WPNeg,        // IO2
-    input wire RESETNeg,
-    inout wire IO3_RESETNeg  // IO3
+// Synthesizable SPI/QSPI flash model intended for FPGA-based emulation.
+//
+// The model deliberately uses only a fixed-size memory, one SCK edge, and
+// counters.  Flash addresses alias into MEM_ADDR_WIDTH bits.  Long erase
+// operations are performed one byte per SCK edge; software polling RDSR
+// supplies the clocks needed to complete them.
+module spi_flash_model #(
+    parameter integer MEM_ADDR_WIDTH = 20,
+    parameter         INIT_FILE      = "",
+    parameter integer PROGRAM_BUSY_CYCLES = 16,
+    parameter integer STATUS_BUSY_CYCLES  = 8
+) (
+    inout  wire SI,           // IO0
+    inout  wire SO,           // IO1
+    input  wire SCK,
+    input  wire CSNeg,
+    inout  wire WPNeg,        // IO2
+    input  wire RESETNeg,
+    inout  wire IO3_RESETNeg  // IO3
 );
 
-  // =========================================================================
-  // Parameters & Memory
-  // =========================================================================
-  logic [7:0] mem                                               [int unsigned];
+  localparam integer MEM_DEPTH = (1 << MEM_ADDR_WIDTH);
+  localparam integer BUSY_WIDTH = 16;
+  localparam logic [MEM_ADDR_WIDTH:0] SECTOR_ERASE_COUNT =
+      (MEM_DEPTH < 4096) ? MEM_DEPTH : 4096;
+  localparam logic [MEM_ADDR_WIDTH:0] BLOCK_ERASE_COUNT =
+      (MEM_DEPTH < 65536) ? MEM_DEPTH : 65536;
 
-  // Status Register 1
-  logic [7:0] status_reg = 8'h40;  // Default QE=1
+  localparam logic [7:0] CMD_PROGRAM    = 8'h02;
+  localparam logic [7:0] CMD_SECTOR_ER  = 8'h20;
+  localparam logic [7:0] CMD_BLOCK_ER   = 8'hd8;
+  localparam logic [7:0] CMD_RDSR       = 8'h05;
+  localparam logic [7:0] CMD_WRSR       = 8'h01;
+  localparam logic [7:0] CMD_WREN       = 8'h06;
+  localparam logic [7:0] CMD_RDID       = 8'h9f;
+  localparam logic [7:0] CMD_SFDP       = 8'h5a;
 
-  // Internal State
-  logic       addr_mode_4b = 0;
-  logic       qpi_active = 0;
-  logic       is_ddr = 0;  // Current command is DDR
-  logic       is_sfdp_read = 0;  // Current command is Read SFDP
-  logic       is_rdid = 0;  // Current command is Read ID
-  logic       reset_enable = 0;
-  time        busy_until = 0;
-
-  // SFDP Memory Size
-  localparam SFDP_SIZE = 256;
-  logic [7:0] sfdp_rom[0:SFDP_SIZE-1];
-
-  initial begin
-    // Initialize SFDP ROM with 0xFF
-    for (int i = 0; i < SFDP_SIZE; i++) sfdp_rom[i] = 8'hFF;
-
-    // --- SFDP Header (0x00 - 0x07) ---
-    // ... (Snip SFDP - Unchanged)
-  end
-
-  // =========================================================================
-  // Internal Signals
-  // =========================================================================
   typedef enum logic [2:0] {
-    ST_IDLE,
     ST_CMD,
     ST_ADDR,
     ST_DUMMY,
     ST_DATA_TX,
-    ST_DATA_RX
+    ST_DATA_RX,
+    ST_IGNORE
   } flash_state_t;
-  flash_state_t state = ST_IDLE;
 
   typedef enum logic [1:0] {
     MODE_SPI,
     MODE_DUAL,
     MODE_QUAD
   } spi_mode_t;
-  spi_mode_t current_mode = MODE_SPI;
 
-  int unsigned bit_cnt;
-  logic [31:0] addr;
-  logic [31:0] shift_reg;
-  logic [7:0] cmd;
-  int unsigned dummy_cycles;
-  logic [7:0] tx_byte;
+  logic [7:0] mem [0:MEM_DEPTH-1];
 
-  logic io0_oe, io1_oe, io2_oe, io3_oe;
-  logic io0_out, io1_out, io2_out, io3_out;
-  wire io0_in, io1_in, io2_in, io3_in;
+  // Persistent flash state.  These names are intentionally retained because
+  // existing emulation testbenches commonly inspect them hierarchically.
+  logic [7:0] status_reg;
+  logic       addr_mode_4b;
+  logic       qpi_active;
+  logic       reset_enable;
 
-  assign io0_in       = SI;
-  assign io1_in       = SO;
-  assign io2_in       = WPNeg;
-  assign io3_in       = IO3_RESETNeg;
+  logic [BUSY_WIDTH-1:0] busy_count;
+  logic                  erase_active;
+  logic [MEM_ADDR_WIDTH-1:0] erase_addr;
+  logic [MEM_ADDR_WIDTH:0]   erase_count;
+  wire busy = erase_active || (busy_count != 0);
+
+  flash_state_t state;
+  spi_mode_t    current_mode;
+  logic [7:0]   cmd;
+  logic [7:0]   shift_reg;
+  logic [31:0]  addr;
+  logic [5:0]   bit_count;
+  logic [5:0]   addr_bits;
+  logic [4:0]   dummy_count;
+  logic [7:0]   tx_byte;
+  logic [1:0]   id_index;
+  logic         is_rdid;
+  logic         is_sfdp_read;
+
+  wire io0_in = SI;
+  wire io1_in = SO;
+  wire io2_in = WPNeg;
+  wire io3_in = IO3_RESETNeg;
+
+  wire [2:0] input_lanes  = qpi_active ? 3'd4 : 3'd1;
+  wire [2:0] output_lanes = (qpi_active || current_mode == MODE_QUAD) ? 3'd4 :
+                            (current_mode == MODE_DUAL) ? 3'd2 : 3'd1;
+  wire [3:0] input_value  = qpi_active ? {io3_in, io2_in, io1_in, io0_in} :
+                                         {3'b000, io0_in};
+  wire [7:0] shifted_value = qpi_active ? {shift_reg[3:0], input_value} :
+                                         {shift_reg[6:0], io0_in};
+  wire [31:0] shifted_addr = (addr << input_lanes) | input_value;
+  wire command_complete = (state == ST_CMD) &&
+                          ((bit_count + input_lanes) >= 8);
+  wire receive_complete = (state == ST_DATA_RX) &&
+                          ((bit_count + input_lanes) >= 8);
+
+  function automatic logic [7:0] read_mem(input logic [31:0] a);
+    logic [MEM_ADDR_WIDTH:0] read_index;
+    begin
+      read_index = {1'b0, a[MEM_ADDR_WIDTH-1:0]};
+      // An erase is logically complete as soon as it is accepted.  The RAM
+      // locations are then physically cleared at one byte per later SCK.
+      if (erase_active &&
+          read_index >= {1'b0, erase_addr} &&
+          read_index < ({1'b0, erase_addr} + erase_count))
+        read_mem = 8'hff;
+      else
+        read_mem = mem[a[MEM_ADDR_WIDTH-1:0]];
+    end
+  endfunction
+
+  function automatic logic [7:0] sfdp_byte(input logic [7:0] a);
+    begin
+      // Minimal valid SFDP header.  Unimplemented parameter bytes read 0xff.
+      case (a)
+        8'h00: sfdp_byte = 8'h53; // S
+        8'h01: sfdp_byte = 8'h46; // F
+        8'h02: sfdp_byte = 8'h44; // D
+        8'h03: sfdp_byte = 8'h50; // P
+        8'h04: sfdp_byte = 8'h06; // minor revision
+        8'h05: sfdp_byte = 8'h01; // major revision
+        8'h06: sfdp_byte = 8'h00; // one parameter header
+        8'h07: sfdp_byte = 8'hff;
+        default: sfdp_byte = 8'hff;
+      endcase
+    end
+  endfunction
+
+  function automatic logic command_has_address(input logic [7:0] c);
+    begin
+      case (c)
+        8'h03, 8'h0b, 8'h3b, 8'h6b, 8'h02, 8'h20, 8'hd8,
+        8'h0d, 8'hbd, 8'hed, 8'h13, 8'h0c, 8'h12, 8'h3c,
+        8'h6c, 8'h5a: command_has_address = 1'b1;
+        default:      command_has_address = 1'b0;
+      endcase
+    end
+  endfunction
+
+  function automatic logic command_is_4byte(input logic [7:0] c);
+    begin
+      case (c)
+        8'h13, 8'h0c, 8'h12, 8'h3c, 8'h6c:
+          command_is_4byte = 1'b1;
+        default: command_is_4byte = 1'b0;
+      endcase
+    end
+  endfunction
+
+  integer init_i;
+  initial begin
+    state          = ST_CMD;
+    current_mode   = MODE_SPI;
+    cmd            = 0;
+    shift_reg      = 0;
+    addr           = 0;
+    bit_count      = 0;
+    addr_bits      = 24;
+    dummy_count    = 0;
+    tx_byte        = 8'hff;
+    id_index       = 0;
+    is_rdid        = 1'b0;
+    is_sfdp_read   = 1'b0;
+    if (INIT_FILE != "") begin
+      $readmemh(INIT_FILE, mem);
+    end else begin
+      for (init_i = 0; init_i < MEM_DEPTH; init_i = init_i + 1)
+        mem[init_i] = 8'hff;
+    end
+  end
+
+  // Persistent state and the single memory write port.  Erases are serialized
+  // so the array remains inferable as FPGA memory instead of a huge resettable
+  // bank of flip-flops.
+  always @(posedge SCK or negedge RESETNeg) begin
+    if (!RESETNeg) begin
+      status_reg   <= 8'h40;
+      addr_mode_4b <= 1'b0;
+      qpi_active   <= 1'b0;
+      reset_enable <= 1'b0;
+      busy_count   <= 0;
+      erase_active <= 1'b0;
+      erase_addr   <= 0;
+      erase_count  <= 0;
+    end else begin
+      if (busy_count != 0)
+        busy_count <= busy_count - 1'b1;
+
+      if (erase_active) begin
+        mem[erase_addr] <= 8'hff;
+        erase_addr <= erase_addr + 1'b1;
+        erase_count <= erase_count - 1'b1;
+        if (erase_count == 1)
+          erase_active <= 1'b0;
+      end
+
+      if (command_complete) begin
+        if (shifted_value == 8'h66) begin
+          reset_enable <= 1'b1;
+        end else if (shifted_value == 8'h99) begin
+          if (reset_enable) begin
+            status_reg   <= 8'h40;
+            addr_mode_4b <= 1'b0;
+            qpi_active   <= 1'b0;
+            busy_count   <= 0;
+            erase_active <= 1'b0;
+          end
+          reset_enable <= 1'b0;
+        end else begin
+          reset_enable <= 1'b0;
+          case (shifted_value)
+            CMD_WREN: if (!busy) status_reg[1] <= 1'b1;
+            8'hb7:    if (!busy) addr_mode_4b <= 1'b1;
+            8'he9:    if (!busy) addr_mode_4b <= 1'b0;
+            8'h38:    if (!busy) qpi_active <= 1'b1;
+            8'hff:    qpi_active <= 1'b0;
+            8'hc7, 8'h60: begin
+              if (status_reg[1] && !busy) begin
+                mem[0]       <= 8'hff;
+                erase_active <= (MEM_DEPTH > 1);
+                erase_addr   <= 1;
+                erase_count  <= MEM_DEPTH - 1;
+                status_reg[1] <= 1'b0;
+              end
+            end
+            default: begin end
+          endcase
+        end
+      end
+
+      // Addressed erase starts on the edge which receives the final address
+      // bits.  Alignment matches 4 KiB sectors and 64 KiB blocks.
+      if ((state == ST_ADDR) && ((bit_count + input_lanes) >= addr_bits) &&
+          status_reg[1] && !busy) begin
+        if (cmd == CMD_SECTOR_ER) begin
+          mem[(shifted_addr & 32'hfffff000)] <= 8'hff;
+          erase_active <= (SECTOR_ERASE_COUNT > 1);
+          erase_addr <= (shifted_addr & 32'hfffff000) + 1'b1;
+          erase_count <= SECTOR_ERASE_COUNT - 1'b1;
+          status_reg[1] <= 1'b0;
+        end else if (cmd == CMD_BLOCK_ER) begin
+          mem[(shifted_addr & 32'hffff0000)] <= 8'hff;
+          erase_active <= (BLOCK_ERASE_COUNT > 1);
+          erase_addr <= (shifted_addr & 32'hffff0000) + 1'b1;
+          erase_count <= BLOCK_ERASE_COUNT - 1'b1;
+          status_reg[1] <= 1'b0;
+        end
+      end
+
+      if (receive_complete) begin
+        if (cmd == CMD_WRSR) begin
+          if (status_reg[1] && !busy) begin
+            status_reg[7:2] <= shifted_value[7:2];
+            status_reg[1] <= 1'b0;
+            busy_count <= STATUS_BUSY_CYCLES;
+          end
+        end else if ((cmd == CMD_PROGRAM || cmd == 8'h12) &&
+                     status_reg[1] && !erase_active) begin
+          mem[addr[MEM_ADDR_WIDTH-1:0]] <= shifted_value;
+          busy_count <= PROGRAM_BUSY_CYCLES;
+        end
+      end
+    end
+  end
+
+  // Transaction state.  CSNeg is the asynchronous transaction reset; it does
+  // not reset persistent flash state such as WEL, QE, or 4-byte address mode.
+  always @(posedge SCK or posedge CSNeg) begin
+    if (CSNeg) begin
+      state          <= ST_CMD;
+      current_mode   <= MODE_SPI;
+      cmd            <= 0;
+      shift_reg      <= 0;
+      addr           <= 0;
+      bit_count      <= 0;
+      addr_bits      <= 24;
+      dummy_count    <= 0;
+      tx_byte        <= 8'hff;
+      id_index       <= 0;
+      is_rdid        <= 1'b0;
+      is_sfdp_read   <= 1'b0;
+    end else begin
+      case (state)
+        ST_CMD: begin
+          shift_reg <= shifted_value;
+          if (command_complete) begin
+            `ifdef DEBUG_QSPI_PRINT
+            $display("[SPI_MODEL] command=%02h busy=%0b qpi=%0b", shifted_value, busy,
+                     qpi_active);
+            `endif
+            cmd       <= shifted_value;
+            bit_count <= 0;
+            addr      <= 0;
+            is_rdid   <= 1'b0;
+            is_sfdp_read <= 1'b0;
+            // Counter-based program/status busy time elapses while a command
+            // is shifted in.  Only an in-progress serialized erase blocks the
+            // command after its opcode has arrived.
+            if (erase_active && shifted_value != CMD_RDSR) begin
+              state <= ST_IGNORE;
+            end else if (command_has_address(shifted_value)) begin
+              state <= ST_ADDR;
+              if (shifted_value == CMD_SFDP)
+                addr_bits <= 24;
+              else if (command_is_4byte(shifted_value) || addr_mode_4b)
+                addr_bits <= 32;
+              else
+                addr_bits <= 24;
+            end else begin
+              case (shifted_value)
+                CMD_RDID: begin
+                  state    <= ST_DATA_TX;
+                  tx_byte  <= 8'hef;
+                  id_index <= 0;
+                  is_rdid  <= 1'b1;
+                end
+                CMD_RDSR: begin
+                  state   <= ST_DATA_TX;
+                  tx_byte <= status_reg | {7'b0, busy};
+                end
+                CMD_WRSR: state <= ST_DATA_RX;
+                default:  state <= ST_IGNORE;
+              endcase
+            end
+          end else begin
+            bit_count <= bit_count + input_lanes;
+          end
+        end
+
+        ST_ADDR: begin
+          addr <= shifted_addr;
+          shift_reg <= shifted_value;
+          if ((bit_count + input_lanes) >= addr_bits) begin
+            `ifdef DEBUG_QSPI_PRINT
+            $display("[SPI_MODEL] address=%08h command=%02h data=%02h", shifted_addr,
+                     cmd, read_mem(shifted_addr));
+            `endif
+            bit_count <= 0;
+            case (cmd)
+              8'h03, 8'h13: begin
+                state <= ST_DATA_TX;
+                tx_byte <= read_mem(shifted_addr);
+              end
+              8'h02, 8'h12: state <= ST_DATA_RX;
+              8'h0b, 8'h0c: begin
+                state <= ST_DUMMY;
+                dummy_count <= 8;
+                current_mode <= MODE_SPI;
+              end
+              8'h3b, 8'h3c, 8'hbd: begin
+                state <= ST_DUMMY;
+                dummy_count <= (cmd == 8'hbd) ? 6 : 8;
+                current_mode <= MODE_DUAL;
+              end
+              8'h6b, 8'h6c, 8'hed: begin
+                state <= ST_DUMMY;
+                dummy_count <= (cmd == 8'hed) ? 6 : 8;
+                current_mode <= MODE_QUAD;
+              end
+              8'h0d: begin
+                state <= ST_DUMMY;
+                dummy_count <= 6;
+                current_mode <= MODE_SPI;
+              end
+              CMD_SFDP: begin
+                state <= ST_DUMMY;
+                dummy_count <= 8;
+                current_mode <= MODE_SPI;
+                is_sfdp_read <= 1'b1;
+              end
+              default: state <= ST_IGNORE;
+            endcase
+          end else begin
+            bit_count <= bit_count + input_lanes;
+          end
+        end
+
+        ST_DUMMY: begin
+          if (dummy_count == 1) begin
+            state <= ST_DATA_TX;
+            bit_count <= 0;
+            if (is_sfdp_read)
+              tx_byte <= sfdp_byte(addr[7:0]);
+            else
+              tx_byte <= read_mem(addr);
+          end else begin
+            dummy_count <= dummy_count - 1'b1;
+          end
+        end
+
+        ST_DATA_TX: begin
+          if ((bit_count + output_lanes) >= 8) begin
+            bit_count <= 0;
+            addr <= addr + 1'b1;
+            if (is_rdid) begin
+              id_index <= id_index + 1'b1;
+              case (id_index)
+                2'd0: tx_byte <= 8'h40;
+                2'd1: tx_byte <= 8'h18;
+                default: tx_byte <= 8'hff;
+              endcase
+            end else if (is_sfdp_read) begin
+              tx_byte <= sfdp_byte(addr[7:0] + 1'b1);
+            end else if (cmd == CMD_RDSR) begin
+              tx_byte <= status_reg | {7'b0, busy};
+            end else begin
+              tx_byte <= read_mem(addr + 1'b1);
+            end
+          end else begin
+            bit_count <= bit_count + output_lanes;
+          end
+        end
+
+        ST_DATA_RX: begin
+          shift_reg <= shifted_value;
+          if (receive_complete) begin
+            bit_count <= 0;
+            if (cmd == CMD_WRSR)
+              state <= ST_IGNORE;
+            else
+              addr <= addr + 1'b1;
+          end else begin
+            bit_count <= bit_count + input_lanes;
+          end
+        end
+
+        default: state <= ST_IGNORE;
+      endcase
+    end
+  end
+
+  // Combinational output mux.  Data changes immediately after the rising SCK
+  // edge and is stable for the next rising edge, matching SPI mode 0 sampling.
+  reg io0_oe, io1_oe, io2_oe, io3_oe;
+  reg io0_out, io1_out, io2_out, io3_out;
+  always @* begin
+    io0_oe  = 1'b0;
+    io1_oe  = 1'b0;
+    io2_oe  = 1'b0;
+    io3_oe  = 1'b0;
+    io0_out = 1'b0;
+    io1_out = 1'b0;
+    io2_out = 1'b0;
+    io3_out = 1'b0;
+    if (RESETNeg && !CSNeg && state == ST_DATA_TX) begin
+      case (output_lanes)
+        3'd4: begin
+          io0_oe  = 1'b1;
+          io1_oe  = 1'b1;
+          io2_oe  = 1'b1;
+          io3_oe  = 1'b1;
+          io3_out = tx_byte[7-bit_count];
+          io2_out = tx_byte[6-bit_count];
+          io1_out = tx_byte[5-bit_count];
+          io0_out = tx_byte[4-bit_count];
+        end
+        3'd2: begin
+          io0_oe  = 1'b1;
+          io1_oe  = 1'b1;
+          io1_out = tx_byte[7-bit_count];
+          io0_out = tx_byte[6-bit_count];
+        end
+        default: begin
+          io1_oe  = 1'b1;
+          io1_out = tx_byte[7-bit_count];
+        end
+      endcase
+    end
+  end
 
   assign SI           = io0_oe ? io0_out : 1'bz;
   assign SO           = io1_oe ? io1_out : 1'bz;
   assign WPNeg        = io2_oe ? io2_out : 1'bz;
   assign IO3_RESETNeg = io3_oe ? io3_out : 1'bz;
 
-  // =========================================================================
-  // Reset Logic
-  // =========================================================================
-
-
-  function logic [7:0] get_mem_byte(input logic [31:0] a);
-    if (mem.exists(a)) begin
-      `ifdef DEBUG_QSPI_PRINT
-      $display("[SPI_MODEL] Get Byte: Addr=%h Data=%h", a, mem[a]);
-      `endif
-      return mem[a];
-    end else begin
-      `ifdef DEBUG_QSPI_PRINT
-      $display("[SPI_MODEL] Get Byte: Addr=%h Data=FF (Miss)", a);
-      `endif
-      return 8'hFF;
-    end
-  endfunction
-
-  function logic is_busy();
-    return ($time < busy_until);
-  endfunction
-
-  // =========================================================================
-  // Main FSM
-  // =========================================================================
-  // Trigger on both edges for DDR support
-  always @(posedge SCK or negedge SCK or posedge CSNeg or negedge RESETNeg) begin
-    if (!RESETNeg) begin
-      state <= ST_IDLE;
-      $display("[SPI_MODEL] RESETNeg detected. Resetting internals.");
-      io0_oe       <= 0;
-      io1_oe       <= 0;
-      io2_oe       <= 0;
-      io3_oe       <= 0;
-      current_mode <= MODE_SPI;
-      bit_cnt      <= 0;
-      addr         <= 0;
-      shift_reg    <= 0;
-      status_reg   <= 8'h40;
-      dummy_cycles <= 0;
-      tx_byte      <= 0;
-      addr_mode_4b <= 0;
-      qpi_active   <= 0;
-      is_ddr       <= 0;
-      is_sfdp_read <= 0;
-      reset_enable <= 0;
-      busy_until   <= 0;
-    end else if (CSNeg) begin
-      if (state == ST_DATA_RX && cmd != 8'h01) begin  // If finishing Page Program (and not WRSR)
-        // Assuming we were programming
-        busy_until <= $time + 1000;  // 1us Busy after Program
-      end
-
-      state <= ST_IDLE;
-      io0_oe <= 0;
-      io1_oe <= 0;
-      io2_oe <= 0;
-      io3_oe <= 0;
-      current_mode <= MODE_SPI;
-      is_ddr <= 0;
-      is_sfdp_read <= 0;
-      is_rdid <= 0;
-      bit_cnt <= 0;
-    end else begin
-      // Determine if we should process this edge
-      // SDR: Only Posedge SCK
-      // DDR: Posedge and Negedge SCK
-      logic process_edge;
-      if (is_ddr) process_edge = 1;
-      else process_edge = SCK;  // True if Posedge (1), False if Negedge (0)
-
-      if (process_edge) begin
-        case (state)
-          ST_IDLE: begin
-            if (is_busy() && !qpi_active) begin
-              // If BUSY, ignore new commands? 
-              // Real flash ignores everything except RDSR (05h) and Suspend (75h).
-              // We will check cmd in ST_CMD to filter.
-            end
-
-            state <= ST_CMD;
-            bit_cnt <= 0;
-            shift_reg <= 0;
-            is_ddr <= 0;
-            is_sfdp_read <= 0;
-            is_rdid <= 0;
-
-            if (qpi_active) begin
-              current_mode <= MODE_QUAD;
-              shift_reg <= {io3_in, io2_in, io1_in, io0_in, 4'b0};
-              bit_cnt <= 4;
-            end else begin
-              current_mode <= MODE_SPI;
-              shift_reg <= {shift_reg[6:0], io0_in};
-              bit_cnt <= 1;
-            end
-          end
-
-          ST_CMD: begin
-            logic [7:0] next_shift;
-            int inc;
-
-            if (qpi_active) begin
-              next_shift = {shift_reg[7:4], io3_in, io2_in, io1_in, io0_in};
-              inc = 4;
-            end else begin
-              next_shift = {shift_reg[6:0], io0_in};
-              inc = 1;
-            end
-
-            shift_reg <= next_shift;
-            bit_cnt   <= bit_cnt + inc;
-
-            if (bit_cnt + inc >= 8) begin  // Changed > 8 to >= 8 for robustness
-              cmd <= next_shift;
-              bit_cnt <= 0;
-              addr <= 0;
-
-              // Check for DTR commands immediately
-              if (next_shift == 8'h0D || next_shift == 8'hBD || next_shift == 8'hED) is_ddr <= 1;
-
-              // Reset Enable Logic
-              if (next_shift == 8'h66) begin
-                reset_enable <= 1;
-                state <= ST_IDLE;
-                $display("[SPI_MODEL] RSTEN (66h) Executed. Reset Enable Set.");
-              end else if (next_shift == 8'h99) begin
-                if (reset_enable) begin
-                  $display("[SPI_MODEL] RST (99h) Executed. Resetting Model.");
-                  io0_oe       <= 0;
-                  io1_oe       <= 0;
-                  io2_oe       <= 0;
-                  io3_oe       <= 0;
-                  current_mode <= MODE_SPI;
-                  bit_cnt      <= 0;
-                  addr         <= 0;
-                  shift_reg    <= 0;
-                  status_reg   <= 8'h40;
-                  dummy_cycles <= 0;
-                  tx_byte      <= 0;
-                  addr_mode_4b <= 0;
-                  qpi_active   <= 0;
-                  is_ddr       <= 0;
-                  is_sfdp_read <= 0;
-                  reset_enable <= 0;
-                  busy_until   <= 0;
-                  state        <= ST_IDLE;
-                end else begin
-                  $display("[SPI_MODEL] RST (99h) Ignored (RSTEN not set).");
-                  state <= ST_IDLE;
-                end
-              end else begin
-                // Any other command clears reset_enable (Standard behavior varies, but safe assumption)
-                reset_enable <= 0;
-
-                // BUSY Check
-                if (is_busy() && next_shift != 8'h05) begin
-                  $display("[SPI_MODEL] Device BUSY. Command %h ignored.", next_shift);
-                  state <= ST_IDLE;
-                end else begin
-                  case (next_shift)
-                    // Read / Prog / Erase
-                    8'h03, 8'h0B, 8'h3B, 8'h6B, 8'h02, 8'h20, 8'hD8, 8'h0D, 8'hBD, 8'hED,  // DTR Reads
-                    8'h13, 8'h0C, 8'h12, 8'h3C, 8'h6C: begin
-                      $display("[SPI_MODEL] CMD Received: %h (Read/Prog/Erase)", next_shift);
-                      state <= ST_ADDR;
-                    end
-
-                    8'h9F: begin  // RDID
-                      $display("[SPI_MODEL] CMD Received: 9F (RDID)");
-                      state <= ST_DATA_TX;
-                      tx_byte <= 8'hEF;  // MFID
-                      // We need a mechanism to cycle through ID bytes: EF, 40, 18
-                      // For now, let's just hack the address to point to a "ID ROM" or similar?
-                      // Or just rely on get_mem_byte?
-                      // The current logic in ST_DATA_TX uses get_mem_byte(addr+1).
-                      // Let's interpret 'addr' as index into ID sequence for RDID.
-                      is_sfdp_read <= 0;
-                      // We can overload 'is_sfdp_read' or add 'is_rdid'.
-                      // Let's add 'is_rdid'
-                      is_rdid <= 1;
-                      bit_cnt <= 0;
-                      addr <= 0;
-                    end
-                    8'h05: begin  // RDSR
-                      $display("[SPI_MODEL] CMD Received: 05 (RDSR)");
-                      state   <= ST_DATA_TX;
-                      tx_byte <= status_reg | (is_busy() ? 8'h01 : 8'h00);  // Return BUSY if set
-                      bit_cnt <= 0;
-                    end
-                    8'h01: begin  // WRSR
-                      state <= ST_DATA_RX;  // Write Status Register
-                    end
-                    8'h06: begin  // WREN
-                      status_reg[1] <= 1;
-                      state <= ST_IDLE;
-                    end
-
-                    8'hB7: begin
-                      addr_mode_4b <= 1;
-                      $display("[SPI_MODEL] EN4BA Executed");
-                      state <= ST_IDLE;
-                    end
-                    8'hE9: begin
-                      addr_mode_4b <= 0;
-                      state <= ST_IDLE;
-                      $display("[SPI_MODEL] EX4BA Executed. Returning to 3-byte mode.");
-                    end
-
-                    8'h38: begin
-                      qpi_active <= 1;
-                      state <= ST_IDLE;
-                      $display("[SPI_MODEL] EQPI Executed");
-                    end  // EQPI
-                    8'hFF: begin
-                      qpi_active <= 0;
-                      state <= ST_IDLE;
-                    end  // RSTQPI (Reset QPI)
-
-                    8'hC7, 8'h60: begin  // CE
-                      if (status_reg[1]) begin
-                        mem.delete();
-                        busy_until <= $time + 20000;  // 20us Busy
-                      end
-                      state <= ST_IDLE;
-                    end
-                    8'h5A: begin  // Read SFDP
-                      state <= ST_ADDR;
-                      is_sfdp_read <= 1;
-                    end
-                    default: state <= ST_IDLE;
-                  endcase
-                end
-              end
-            end else begin
-              bit_cnt <= bit_cnt + inc;
-            end
-          end
-
-          ST_ADDR: begin
-            logic [7:0] next_shift;
-            int inc;
-            logic [31:0] full_cnt;
-            logic [31:0] next_addr;
-
-            full_cnt = (addr_mode_4b && !is_sfdp_read) ? 32 : 24;
-
-            if (qpi_active || current_mode == MODE_QUAD) begin
-              if (qpi_active) begin
-                next_shift = {shift_reg[3:0], io3_in, io2_in, io1_in, io0_in};  // Shift 4 in 
-                inc = 4;
-              end else begin
-                next_shift = {shift_reg[6:0], io0_in};
-                inc = 1;
-              end
-            end else begin
-              next_shift = {shift_reg[6:0], io0_in};
-              inc = 1;
-            end
-
-            shift_reg <= next_shift;
-            bit_cnt   <= bit_cnt + inc;
-
-            if ((bit_cnt + inc) % 8 == 0) begin  // Byte boundary
-              // Accumulate address by shifting left and appending new byte
-              next_addr = {addr[23:0], next_shift};
-              addr <= next_addr;
-              `ifdef DEBUG_QSPI_PRINT
-              $display("[SPI_MODEL] Accumulating Addr: NewAddr=%h, Byte=%h, bit_cnt=%0d, full_cnt=%0d, 4b=%0d", next_addr, next_shift, (bit_cnt+inc), full_cnt, addr_mode_4b);
-              `endif
-
-              if (bit_cnt + inc >= full_cnt) begin
-                // Address complete
-                bit_cnt <= 0;
-
-                // Handle Mode & Dummy
-                case (cmd)
-                  8'h03, 8'h13: begin
-                    automatic logic [7:0] val = get_mem_byte(next_addr);
-                    state   <= ST_DATA_TX;
-                    tx_byte <= val;
-                    // Immediate Drive
-                    io1_oe  <= 1;
-                    io1_out <= val[7];
-                    bit_cnt <= 0;
-                  end
-
-                  8'h02, 8'h12: begin
-                    state <= ST_DATA_RX;
-                  end
-
-                  8'h0B, 8'h0C: begin
-                    state <= ST_DUMMY;
-                    dummy_cycles <= 8;
-                  end
-
-                  8'h3B, 8'h3C: begin
-                    state <= ST_DUMMY;
-                    dummy_cycles <= 8;
-                    current_mode <= MODE_DUAL;
-                  end  // Dual Output
-                  8'h6B, 8'h6C: begin
-                    state <= ST_DUMMY;
-                    dummy_cycles <= 8;
-                    current_mode <= MODE_QUAD;
-                  end  // Quad Output
-
-                  8'h0D: begin
-                    state <= ST_DUMMY;
-                    dummy_cycles <= 6;
-                    current_mode <= MODE_SPI;
-                    is_ddr <= 1;
-                  end  // Fast Read DTR
-                  8'hBD: begin
-                    state <= ST_DUMMY;
-                    dummy_cycles <= 6;
-                    current_mode <= MODE_DUAL;
-                    is_ddr <= 1;
-                  end
-                  8'hED: begin
-                    state <= ST_DUMMY;
-                    dummy_cycles <= 6;
-                    current_mode <= MODE_QUAD;
-                    is_ddr <= 1;
-                  end
-
-                  8'h5A: begin
-                    state <= ST_DUMMY;
-                    dummy_cycles <= 8;
-                    current_mode <= MODE_SPI;
-                  end
-
-                  8'h20: begin
-                    if (status_reg[1]) begin
-                      for (int i = 0; i < 4096; i++)
-                      if (mem.exists(next_addr + i)) mem.delete(next_addr + i);
-                      busy_until <= $time + 5000;  // 5us Busy
-                    end
-                    state <= ST_IDLE;
-                  end
-                  8'hD8: begin
-                    if (status_reg[1]) begin
-                      for (int i = 0; i < 65536; i++)
-                      if (mem.exists(next_addr + i)) mem.delete(next_addr + i);
-                      busy_until <= $time + 10000;  // 10us Busy
-                    end
-                    state <= ST_IDLE;
-                  end
-
-                  default: state <= ST_IDLE;
-                endcase
-              end
-            end
-          end
-
-          ST_DUMMY: begin
-            dummy_cycles <= dummy_cycles - 1;
-            if (dummy_cycles == 1) begin
-              state <= ST_DATA_TX;
-              if (is_sfdp_read) begin
-                if (addr < SFDP_SIZE) tx_byte <= sfdp_rom[addr];
-                else tx_byte <= 8'hFF;
-              end else begin
-                tx_byte <= get_mem_byte(addr);
-              end
-              bit_cnt <= 0;
-            end
-          end
-
-          ST_DATA_TX: begin
-            // Advance State Logic (Address increment, Byte fetch)
-            // Output driving is separate.
-            int bits_per_edge;  // Per processed edge
-            if (current_mode == MODE_QUAD || qpi_active) bits_per_edge = 4;
-            else if (current_mode == MODE_DUAL) bits_per_edge = 2;
-            else bits_per_edge = 1;
-
-            `ifdef DEBUG_QSPI_PRINT
-            $display("[FLASH_TX] t=%0t posedge#%0d: addr=%h bit_cnt=%0d tx_byte=%h bpe=%0d io1_out=%b",
-                     $time, bit_cnt, addr, bit_cnt, tx_byte, bits_per_edge, io1_out);
-            `endif
-
-            bit_cnt <= bit_cnt + bits_per_edge;
-
-            if (bit_cnt + bits_per_edge >= 8) begin
-              bit_cnt <= 0;
-              // Byte Done
-              addr <= addr + 1;
-              `ifdef DEBUG_QSPI_PRINT
-              $display("[FLASH_TX] BYTE DONE: addr was %h, now %h, next tx_byte=mem[%h]",
-                       addr, addr+1, addr+1);
-              `endif
-              if (is_rdid) begin
-                case (addr + 1)
-                  1: tx_byte <= 8'h40;
-                  2: tx_byte <= 8'h18;
-                  default: tx_byte <= 8'hFF;
-                endcase
-              end else if (is_sfdp_read) begin
-                if ((addr + 1) < SFDP_SIZE) tx_byte <= sfdp_rom[addr+1];
-                else tx_byte <= 8'hFF;
-              end else begin
-                tx_byte <= get_mem_byte(addr + 1);
-              end
-            end
-          end
-
-          ST_DATA_RX: begin
-            // Simplified RX
-            automatic logic [7:0] next_shift = {shift_reg[6:0], io0_in};  // Assuming SPI for Prog
-            shift_reg <= next_shift;
-            bit_cnt   <= bit_cnt + 1;
-            if (bit_cnt == 7) begin
-              if (cmd == 8'h01) begin  // WRSR
-                if (status_reg[1]) begin  // WREN must be set
-                  status_reg <= (next_shift & 8'hFC) | (status_reg & 8'h02); // Keep WEL, clear BUSY (actually BUSY is dynamic)
-                  status_reg[1] <= 0;  // Clear WEL
-                  $display("[SPI_MODEL] WRSR Executed. New Status: %h", next_shift);
-                  busy_until <= $time + 1000;  // 1us Busy
-                end
-                state <= ST_IDLE;  // Assume 1 byte write for now
-              end else if (status_reg[1]) begin  // Page Program
-                mem[addr] = next_shift;
-                $display("[SPI_MODEL] Writing Mem: Addr=%h Data=%h", addr, next_shift);
-                addr <= addr + 1;
-              end
-              bit_cnt <= 0;
-            end
-          end
-        endcase
-      end
-
-      // Output Drive Logic
-      // Driven on Negedge for SDR.
-      if (state == ST_DATA_TX) begin
-        if (is_ddr || !SCK) begin
-          case (current_mode)
-            MODE_SPI: begin
-              if (!qpi_active) begin
-                io1_oe  <= 1;  // SO
-                io1_out <= tx_byte[7-bit_cnt];
-              end else begin
-                // QPI Mode Output (Quad)
-                io0_oe  <= 1;
-                io1_oe  <= 1;
-                io2_oe  <= 1;
-                io3_oe  <= 1;
-                io3_out <= tx_byte[7-bit_cnt];
-                io2_out <= tx_byte[7-bit_cnt-1];  // etc?
-                // QPI logic matches Quad
-                io3_out <= tx_byte[7-bit_cnt];  // 7, 3
-                io2_out <= tx_byte[6-bit_cnt];  // 6, 2
-                io1_out <= tx_byte[5-bit_cnt];  // 5, 1
-                io0_out <= tx_byte[4-bit_cnt];  // 4, 0
-              end
-            end
-
-            MODE_DUAL: begin
-              io0_oe  <= 1;
-              io1_oe  <= 1;
-              io1_out <= tx_byte[7-bit_cnt];  // 7, 5, 3, 1
-              io0_out <= tx_byte[6-bit_cnt];  // 6, 4, 2, 0
-            end
-
-            MODE_QUAD: begin
-              io0_oe  <= 1;
-              io1_oe  <= 1;
-              io2_oe  <= 1;
-              io3_oe  <= 1;
-              io3_out <= tx_byte[7-bit_cnt];  // 7, 3
-              io2_out <= tx_byte[6-bit_cnt];
-              io1_out <= tx_byte[5-bit_cnt];
-              io0_out <= tx_byte[4-bit_cnt];
-            end
-          endcase
-        end
-      end
-
-    end
-  end
-
-  // =========================================================================
-  // Output Logic
-  // =========================================================================
-
-  // =========================================================================
-  // Backdoor Access Tasks
-  // =========================================================================
-  task write_mem(input int a, input logic [7:0] d);
-    mem[a] = d;
-    `ifdef DEBUG_QSPI_PRINT
-    $display("[SPI_MODEL] Backdoor Write: Addr=%h Data=%h", a, d);
-    `endif
+  // Simulation-only backdoor helpers retained for the existing testbench.
+  // synthesis translate_off
+  task write_mem(input integer a, input logic [7:0] d);
+    if (a >= 0 && a < MEM_DEPTH)
+      mem[a] = d;
   endtask
 
-  task reset_internals();
-    // Deprecated: Internal resets are now handled in the main always block
+  task reset_internals;
   endtask
-
-  // =========================================================================
-  // Persistence Utilities
-  // =========================================================================
 
   task save_memory(input string filename);
-    int fd;
-    fd = $fopen(filename, "w");
-    if (fd) begin
-      foreach (mem[a]) begin  // Changed addr to a to avoid masking
-        $fdisplay(fd, "@%h %h", a, mem[a]);
-      end
-      $fclose(fd);
-      $display("[SPI_MODEL] Memory saved to %s", filename);
-    end else begin
-      $error("[SPI_MODEL] Failed to open %s for writing", filename);
-    end
+    $writememh(filename, mem);
   endtask
 
   task load_memory(input string filename);
-    int fd;
-    logic [31:0] a;  // Changed local addr to a
-    logic [7:0] data;
-    int code;
-    string line;
-
-    fd = $fopen(filename, "r");
-    if (fd) begin
-      while (!$feof(
-          fd
-      )) begin
-        if ($fgets(line, fd)) begin
-          code = $sscanf(line, "@%h %h", a, data);
-          if (code == 2) begin
-            mem[a] = data;
-          end
-        end
-      end
-      $fclose(fd);
-      $display("[SPI_MODEL] Memory loaded from %s", filename);
-    end else begin
-      $display("[SPI_MODEL] Warning: Could not open %s for reading. Starting empty/default.",
-               filename);
-    end
+    $readmemh(filename, mem);
   endtask
-
-  initial begin
-    // Initial block no longer calls reset_internals because reset is handled by signal
-    // If you need power-on reset simulation without asserting RESETNeg, you might need to
-    // manually set initial values here.
-    io0_oe       = 0;
-    io1_oe       = 0;
-    io2_oe       = 0;
-    io3_oe       = 0;
-    current_mode = MODE_SPI;
-    bit_cnt      = 0;
-    addr         = 0;
-    shift_reg    = 0;
-    status_reg   = 8'h40;
-    dummy_cycles = 0;
-    tx_byte      = 0;
-    addr_mode_4b = 0;
-    qpi_active   = 0;
-    is_ddr       = 0;
-    is_sfdp_read = 0;
-    reset_enable = 0;
-    busy_until   = 0;
-  end
+  // synthesis translate_on
 
 endmodule
