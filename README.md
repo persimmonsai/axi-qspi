@@ -86,6 +86,25 @@ A GitHub Actions workflow (`.github/workflows/verilator.yml`) is configured to a
 -   **Datasheet**: See [doc/datasheet.md](doc/datasheet.md) for detailed signal descriptions and register maps.
 -   **Register Map**: HTML documentation is generated in `doc/rdl/` after running `make docs`.
 
+## FPGA Flash Emulation Model
+
+`src/spi_flash_model_fpga_synt.sv` (module `spi_flash_model_fpga_synt`) is
+synthesizable by Vivado and can be used as an on-FPGA SPI/QSPI flash target.
+It is a separate model from `src/spi_flash_model.sv` (the behavioral,
+associative-array model used by this package's own testbench) — the fixed
+memory defaults to 1 MiB and aliases larger flash addresses into that range.
+Configure it with:
+
+-   `MEM_ADDR_WIDTH`: byte-memory address width (default `20`).
+-   `INIT_FILE`: optional `$readmemh` image used for RAM initialization.
+-   `PROGRAM_BUSY_CYCLES` and `STATUS_BUSY_CYCLES`: busy duration measured in
+    incoming SCK edges.
+
+The model supports standard, dual-output, quad-output, QPI, 3-byte and 4-byte
+reads, page program, status/ID/SFDP access, and serialized sector/block/chip
+erase. DTR opcodes are accepted but transfer data as SDR because portable FPGA
+logic cannot update one state machine on both SCK edges.
+
 ## License
 
 This project is licensed under the Solderpad Hardware License v2.1. See [LICENSE](LICENSE) for details.
