@@ -245,6 +245,8 @@ module axi_qspi_regs (
         logic XIP_CMD;
         logic XIP_DUM;
         logic XIP_ADDRLEN;
+        logic SPIMODE;
+        logic XIP_MODE;
     } decoded_reg_strb_t;
     decoded_reg_strb_t decoded_reg_strb;
     logic decoded_err;
@@ -279,6 +281,8 @@ module axi_qspi_regs (
         decoded_reg_strb.XIP_CMD = cpuif_req_masked & (cpuif_addr == 7'h48);
         decoded_reg_strb.XIP_DUM = cpuif_req_masked & (cpuif_addr == 7'h4c);
         decoded_reg_strb.XIP_ADDRLEN = cpuif_req_masked & (cpuif_addr == 7'h50);
+        decoded_reg_strb.SPIMODE = cpuif_req_masked & (cpuif_addr == 7'h54);
+        decoded_reg_strb.XIP_MODE = cpuif_req_masked & (cpuif_addr == 7'h58);
         decoded_err = '0;
     end
 
@@ -431,6 +435,26 @@ module axi_qspi_regs (
                 logic load_next;
             } bits;
         } XIP_ADDRLEN;
+        struct {
+            struct {
+                logic [7:0] next;
+                logic load_next;
+            } val;
+            struct {
+                logic [7:0] next;
+                logic load_next;
+            } len;
+        } SPIMODE;
+        struct {
+            struct {
+                logic [7:0] next;
+                logic load_next;
+            } val;
+            struct {
+                logic [7:0] next;
+                logic load_next;
+            } len;
+        } XIP_MODE;
     } field_combo_t;
     field_combo_t field_combo;
 
@@ -548,6 +572,22 @@ module axi_qspi_regs (
                 logic [7:0] value;
             } bits;
         } XIP_ADDRLEN;
+        struct {
+            struct {
+                logic [7:0] value;
+            } val;
+            struct {
+                logic [7:0] value;
+            } len;
+        } SPIMODE;
+        struct {
+            struct {
+                logic [7:0] value;
+            } val;
+            struct {
+                logic [7:0] value;
+            } len;
+        } XIP_MODE;
     } field_storage_t;
     field_storage_t field_storage;
 
@@ -1101,6 +1141,98 @@ module axi_qspi_regs (
         end
     end
     assign hwif_out.XIP_ADDRLEN.bits.value = field_storage.XIP_ADDRLEN.bits.value;
+    // Field: axi_qspi_regs.SPIMODE.val
+    always_comb begin
+        automatic logic [7:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.SPIMODE.val.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.SPIMODE && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.SPIMODE.val.value & ~decoded_wr_biten[7:0]) | (decoded_wr_data[7:0] & decoded_wr_biten[7:0]);
+            load_next_c = '1;
+        end
+        field_combo.SPIMODE.val.next = next_c;
+        field_combo.SPIMODE.val.load_next = load_next_c;
+    end
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
+            field_storage.SPIMODE.val.value <= 8'h0;
+        end else begin
+            if(field_combo.SPIMODE.val.load_next) begin
+                field_storage.SPIMODE.val.value <= field_combo.SPIMODE.val.next;
+            end
+        end
+    end
+    assign hwif_out.SPIMODE.val.value = field_storage.SPIMODE.val.value;
+    // Field: axi_qspi_regs.SPIMODE.len
+    always_comb begin
+        automatic logic [7:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.SPIMODE.len.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.SPIMODE && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.SPIMODE.len.value & ~decoded_wr_biten[15:8]) | (decoded_wr_data[15:8] & decoded_wr_biten[15:8]);
+            load_next_c = '1;
+        end
+        field_combo.SPIMODE.len.next = next_c;
+        field_combo.SPIMODE.len.load_next = load_next_c;
+    end
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
+            field_storage.SPIMODE.len.value <= 8'h0;
+        end else begin
+            if(field_combo.SPIMODE.len.load_next) begin
+                field_storage.SPIMODE.len.value <= field_combo.SPIMODE.len.next;
+            end
+        end
+    end
+    assign hwif_out.SPIMODE.len.value = field_storage.SPIMODE.len.value;
+    // Field: axi_qspi_regs.XIP_MODE.val
+    always_comb begin
+        automatic logic [7:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.XIP_MODE.val.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.XIP_MODE && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.XIP_MODE.val.value & ~decoded_wr_biten[7:0]) | (decoded_wr_data[7:0] & decoded_wr_biten[7:0]);
+            load_next_c = '1;
+        end
+        field_combo.XIP_MODE.val.next = next_c;
+        field_combo.XIP_MODE.val.load_next = load_next_c;
+    end
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
+            field_storage.XIP_MODE.val.value <= 8'h0;
+        end else begin
+            if(field_combo.XIP_MODE.val.load_next) begin
+                field_storage.XIP_MODE.val.value <= field_combo.XIP_MODE.val.next;
+            end
+        end
+    end
+    assign hwif_out.XIP_MODE.val.value = field_storage.XIP_MODE.val.value;
+    // Field: axi_qspi_regs.XIP_MODE.len
+    always_comb begin
+        automatic logic [7:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.XIP_MODE.len.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.XIP_MODE && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.XIP_MODE.len.value & ~decoded_wr_biten[15:8]) | (decoded_wr_data[15:8] & decoded_wr_biten[15:8]);
+            load_next_c = '1;
+        end
+        field_combo.XIP_MODE.len.next = next_c;
+        field_combo.XIP_MODE.len.load_next = load_next_c;
+    end
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
+            field_storage.XIP_MODE.len.value <= 8'h0;
+        end else begin
+            if(field_combo.XIP_MODE.len.load_next) begin
+                field_storage.XIP_MODE.len.value <= field_combo.XIP_MODE.len.next;
+            end
+        end
+    end
+    assign hwif_out.XIP_MODE.len.value = field_storage.XIP_MODE.len.value;
 
     //--------------------------------------------------------------------------
     // Write response
@@ -1183,6 +1315,14 @@ module axi_qspi_regs (
         end
         if(rd_mux_addr == 7'h50) begin
             readback_data_var[7:0] = field_storage.XIP_ADDRLEN.bits.value;
+        end
+        if(rd_mux_addr == 7'h54) begin
+            readback_data_var[7:0] = field_storage.SPIMODE.val.value;
+            readback_data_var[15:8] = field_storage.SPIMODE.len.value;
+        end
+        if(rd_mux_addr == 7'h58) begin
+            readback_data_var[7:0] = field_storage.XIP_MODE.val.value;
+            readback_data_var[15:8] = field_storage.XIP_MODE.len.value;
         end
         readback_data = readback_data_var;
         readback_done = decoded_req & ~decoded_req_is_wr;

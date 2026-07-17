@@ -46,6 +46,7 @@ module spi_flash_model (
     ST_IDLE,
     ST_CMD,
     ST_ADDR,
+    ST_MODE,
     ST_DUMMY,
     ST_DATA_TX,
     ST_DATA_RX
@@ -249,6 +250,27 @@ module spi_flash_model (
                       state <= ST_ADDR;
                     end
 
+                    // Dual I/O Read / Quad I/O Read (+4B variants): unlike
+                    // the Dual/Quad OUTPUT opcodes above (which keep a
+                    // single-lane address and only switch to dual/quad on
+                    // DATA), real I/O-read opcodes send ADDRESS (and the
+                    // MODE byte that follows it) at the same dual/quad
+                    // width as DATA. current_mode is set here, immediately
+                    // at CMD decode, so ST_ADDR's own address-shifting
+                    // logic (gated on current_mode==MODE_QUAD, see below)
+                    // uses the right width for THIS opcode without
+                    // requiring the persistent qpi_active flag.
+                    8'hBB, 8'hBC: begin
+                      $display("[SPI_MODEL] CMD Received: %h (Dual I/O Read)", next_shift);
+                      state <= ST_ADDR;
+                      current_mode <= MODE_DUAL;
+                    end
+                    8'hEB, 8'hEC: begin
+                      $display("[SPI_MODEL] CMD Received: %h (Quad I/O Read)", next_shift);
+                      state <= ST_ADDR;
+                      current_mode <= MODE_QUAD;
+                    end
+
                     8'h9F: begin  // RDID
                       $display("[SPI_MODEL] CMD Received: 9F (RDID)");
                       state <= ST_DATA_TX;
@@ -328,14 +350,22 @@ module spi_flash_model (
 
             full_cnt = (addr_mode_4b && !is_sfdp_read) ? 32 : 24;
 
-            if (qpi_active || current_mode == MODE_QUAD) begin
-              if (qpi_active) begin
-                next_shift = {shift_reg[3:0], io3_in, io2_in, io1_in, io0_in};  // Shift 4 in 
-                inc = 4;
-              end else begin
-                next_shift = {shift_reg[6:0], io0_in};
-                inc = 1;
-              end
+            // Address-phase I/O width tracks current_mode directly (set at
+            // CMD decode -- either persistently via qpi_active, which
+            // forces current_mode<=MODE_QUAD back in ST_IDLE, or per-
+            // transaction for real I/O-read opcodes like 0xEB/0xBB, see
+            // their own CMD-decode case above). This used to special-case
+            // qpi_active and silently fall back to single-lane (inc=1) for
+            // a plain current_mode==MODE_QUAD with qpi_active=0 -- i.e.
+            // opcode-driven quad address never actually worked, only the
+            // persistent QPI path did. Fixed so 0xEB/0xBB's own quad/dual
+            // address phase actually shifts at the right width.
+            if (current_mode == MODE_QUAD) begin
+              next_shift = {shift_reg[3:0], io3_in, io2_in, io1_in, io0_in};  // Shift 4 in
+              inc = 4;
+            end else if (current_mode == MODE_DUAL) begin
+              next_shift = {shift_reg[5:0], io1_in, io0_in};  // Shift 2 in
+              inc = 2;
             end else begin
               next_shift = {shift_reg[6:0], io0_in};
               inc = 1;
@@ -388,6 +418,15 @@ module spi_flash_model (
                     current_mode <= MODE_QUAD;
                   end  // Quad Output
 
+                  8'hBB, 8'hBC: begin  // Dual I/O Read: ADDR -> MODE (still dual)
+                    state <= ST_MODE;
+                    bit_cnt <= 0;
+                  end
+                  8'hEB, 8'hEC: begin  // Quad I/O Read: ADDR -> MODE (still quad)
+                    state <= ST_MODE;
+                    bit_cnt <= 0;
+                  end
+
                   8'h0D: begin
                     state <= ST_DUMMY;
                     dummy_cycles <= 6;
@@ -433,6 +472,39 @@ module spi_flash_model (
                   default: state <= ST_IDLE;
                 endcase
               end
+            end
+          end
+
+          ST_MODE: begin
+            // Consume the mode byte (M7-M0) at the same I/O width as the
+            // address phase just completed (current_mode still holds that
+            // width, set at CMD decode for 0xBB/0xEB). The mode byte's own
+            // value (continuous-read engage/disengage) is intentionally
+            // not acted on here -- this model doesn't implement the
+            // continuous-read opcode-skip optimization, only the mode-byte
+            // phase itself, which is what real 0xBB/0xEB require just to
+            // complete the transaction protocol-correctly.
+            logic [7:0] next_shift;
+            int inc;
+
+            if (current_mode == MODE_QUAD) begin
+              next_shift = {shift_reg[3:0], io3_in, io2_in, io1_in, io0_in};
+              inc = 4;
+            end else if (current_mode == MODE_DUAL) begin
+              next_shift = {shift_reg[5:0], io1_in, io0_in};
+              inc = 2;
+            end else begin
+              next_shift = {shift_reg[6:0], io0_in};
+              inc = 1;
+            end
+
+            shift_reg <= next_shift;
+            bit_cnt   <= bit_cnt + inc;
+
+            if (bit_cnt + inc >= 8) begin
+              bit_cnt <= 0;
+              state <= ST_DUMMY;
+              dummy_cycles <= 8;
             end
           end
 

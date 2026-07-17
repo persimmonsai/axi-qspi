@@ -14,6 +14,13 @@ module spi_controller #(
     input logic [31:0] cfg_spiaddr_i,
     input logic [31:0] cfg_spilen_i,         // [7:0] cmd, [15:8] addr, [31:16] data (bits)
     input logic [31:0] cfg_spidum_i,
+    // Optional mode-byte (M7-M0) phase, sent after ADDR and before DUMMY --
+    // required by real Quad/Dual I/O opcodes (e.g. 0xEB, 0xBB), which
+    // interleave a mode byte between address and dummy cycles. [7:0] is the
+    // byte value to shift out; [15:8] is its bit length (0 disables the
+    // phase entirely, preserving prior behavior for every opcode that
+    // doesn't need it).
+    input logic [15:0] cfg_spimode_i,
     input logic [ 1:0] cfg_cs_index_i,       // Selected CS [0..3]
 
     // Control
@@ -151,6 +158,7 @@ module spi_controller #(
     IDLE,
     CMD,
     ADDR,
+    MODE,
     DUMMY,
     DATA_TX,
     DATA_RX,
@@ -423,7 +431,11 @@ module spi_controller #(
           if (pulse_fe_effective) begin
             if (bit_cnt_q <= 4) begin
               // Next
-              if (cfg_spidum_i > 0) begin
+              if (cfg_spimode_i[15:8] > 0) begin
+                state_d     = MODE;
+                bit_cnt_d   = cfg_spimode_i[15:8];
+                shift_reg_d = {24'b0, cfg_spimode_i[7:0]};
+              end else if (cfg_spidum_i > 0) begin
                 state_d   = DUMMY;
                 bit_cnt_d = cfg_spidum_i;
               end else if (trigger_tx_q) begin
@@ -453,7 +465,11 @@ module spi_controller #(
           if (pulse_fe_effective) begin
             if (bit_cnt_q <= 2) begin
               // Next
-              if (cfg_spidum_i > 0) begin
+              if (cfg_spimode_i[15:8] > 0) begin
+                state_d     = MODE;
+                bit_cnt_d   = cfg_spimode_i[15:8];
+                shift_reg_d = {24'b0, cfg_spimode_i[7:0]};
+              end else if (cfg_spidum_i > 0) begin
                 state_d   = DUMMY;
                 bit_cnt_d = cfg_spidum_i;
               end else if (trigger_tx_q) begin
@@ -484,7 +500,11 @@ module spi_controller #(
           if (pulse_fe_effective) begin
             if (bit_cnt_q == 1) begin
               // Next
-              if (cfg_spidum_i > 0) begin
+              if (cfg_spimode_i[15:8] > 0) begin
+                state_d     = MODE;
+                bit_cnt_d   = cfg_spimode_i[15:8];
+                shift_reg_d = {24'b0, cfg_spimode_i[7:0]};
+              end else if (cfg_spidum_i > 0) begin
                 state_d   = DUMMY;
                 bit_cnt_d = cfg_spidum_i;
               end else if (trigger_tx_q) begin
@@ -497,6 +517,102 @@ module spi_controller #(
                   tx_word_cnt_d = 32;
                 end else begin
                   tx_word_cnt_d = 0;
+                end
+              end else begin
+                state_d = DATA_RX;
+                bit_cnt_d = cfg_spilen_i[31:16];
+                tx_word_cnt_d = 0;
+              end
+            end else begin
+              bit_cnt_d = bit_cnt_q - 1;
+            end
+          end
+        end
+      end
+
+      MODE: begin
+        // Mode-byte (M7-M0) phase: sent after ADDR, before DUMMY, at the
+        // SAME I/O width as the just-completed address phase (per JEDEC
+        // convention for e.g. 0xEB Quad I/O / 0xBB Dual I/O Read) -- reuses
+        // cfg_spicmd_i[29:28] (addr_mode), not a separate field, since a
+        // real flash part always ties mode-byte width to address width.
+        spi_oe_o   = 4'b0001;
+        spi_mode_o = 2'b00;
+        if (cfg_spicmd_i[29:28] == 2'b10) begin
+          // Quad Mode Byte
+          spi_mode_o = 2'b01;
+          spi_oe_o   = 4'b1111;
+          if (bit_cnt_q >= 4) spi_sdo_o = shift_reg_q[bit_cnt_q-1-:4];
+
+          if (pulse_fe_effective) begin
+            if (bit_cnt_q <= 4) begin
+              if (cfg_spidum_i > 0) begin
+                state_d   = DUMMY;
+                bit_cnt_d = cfg_spidum_i;
+              end else if (trigger_tx_q) begin
+                state_d = DATA_TX;
+                bit_cnt_d = cfg_spilen_i[31:16];
+                tx_word_cnt_d = 0;
+                if (tx_count > 0) begin
+                  shift_reg_d   = tx_fifo[tx_rd_ptr];
+                  tx_pop_enable = 1;
+                  tx_word_cnt_d = 32;
+                end
+              end else begin
+                state_d = DATA_RX;
+                bit_cnt_d = cfg_spilen_i[31:16];
+                tx_word_cnt_d = 0;
+              end
+            end else begin
+              bit_cnt_d = bit_cnt_q - 4;
+            end
+          end
+        end else if (cfg_spicmd_i[29:28] == 2'b01) begin
+          // Dual Mode Byte
+          spi_mode_o = 2'b01;
+          spi_oe_o   = 4'b0011;
+          if (bit_cnt_q >= 2) spi_sdo_o[1:0] = shift_reg_q[bit_cnt_q-1-:2];
+
+          if (pulse_fe_effective) begin
+            if (bit_cnt_q <= 2) begin
+              if (cfg_spidum_i > 0) begin
+                state_d   = DUMMY;
+                bit_cnt_d = cfg_spidum_i;
+              end else if (trigger_tx_q) begin
+                state_d = DATA_TX;
+                bit_cnt_d = cfg_spilen_i[31:16];
+                tx_word_cnt_d = 0;
+                if (tx_count > 0) begin
+                  shift_reg_d   = tx_fifo[tx_rd_ptr];
+                  tx_pop_enable = 1;
+                  tx_word_cnt_d = 32;
+                end
+              end else begin
+                state_d = DATA_RX;
+                bit_cnt_d = cfg_spilen_i[31:16];
+                tx_word_cnt_d = 0;
+              end
+            end else begin
+              bit_cnt_d = bit_cnt_q - 2;
+            end
+          end
+        end else begin
+          // Std Mode Byte
+          if (bit_cnt_q > 0) spi_sdo_o[0] = shift_reg_q[bit_cnt_q-1];
+
+          if (pulse_fe_effective) begin
+            if (bit_cnt_q == 1) begin
+              if (cfg_spidum_i > 0) begin
+                state_d   = DUMMY;
+                bit_cnt_d = cfg_spidum_i;
+              end else if (trigger_tx_q) begin
+                state_d = DATA_TX;
+                bit_cnt_d = cfg_spilen_i[31:16];
+                tx_word_cnt_d = 0;
+                if (tx_count > 0) begin
+                  shift_reg_d   = tx_fifo[tx_rd_ptr];
+                  tx_pop_enable = 1;
+                  tx_word_cnt_d = 32;
                 end
               end else begin
                 state_d = DATA_RX;

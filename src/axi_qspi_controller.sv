@@ -82,11 +82,15 @@ module axi_qspi_controller #(
   logic [31:0] reg_spiaddr;
   logic [31:0] reg_spilen;
   logic [31:0] reg_spidum;
+  logic [ 7:0] reg_spimode_val;
+  logic [ 7:0] reg_spimode_len;
   logic [ 7:0] reg_xip_cmd;
   logic [ 1:0] reg_xip_data_mode;
   logic [ 1:0] reg_xip_addr_mode;
   logic [ 7:0] reg_xip_dum;
   logic [ 7:0] reg_xip_addrlen;
+  logic [ 7:0] reg_xip_mode_val;
+  logic [ 7:0] reg_xip_mode_len;
   logic [31:0] reg_cs_def;
   logic [31:0] reg_cs_a_0;
   logic [31:0] reg_cs_m_0;
@@ -380,11 +384,15 @@ module axi_qspi_controller #(
   assign reg_spiaddr = hwif_out.SPIADR.addr.value;
   assign reg_spilen = hwif_out.SPILEN.len.value;
   assign reg_spidum = hwif_out.SPIDUM.dum.value;
+  assign reg_spimode_val = hwif_out.SPIMODE.val.value;
+  assign reg_spimode_len = hwif_out.SPIMODE.len.value;
   assign reg_xip_cmd = hwif_out.XIP_CMD.cmd.value;
   assign reg_xip_data_mode = hwif_out.XIP_CMD.data_mode.value;
   assign reg_xip_addr_mode = hwif_out.XIP_CMD.addr_mode.value;
   assign reg_xip_dum = hwif_out.XIP_DUM.dum.value;
   assign reg_xip_addrlen = hwif_out.XIP_ADDRLEN.bits.value;
+  assign reg_xip_mode_val = hwif_out.XIP_MODE.val.value;
+  assign reg_xip_mode_len = hwif_out.XIP_MODE.len.value;
   assign reg_cs_def = hwif_out.CS_DEF.cs.value;
   assign reg_cs_a_0 = hwif_out.CS_A_0.val.value;
   assign reg_cs_m_0 = hwif_out.CS_M_0.val.value;
@@ -509,6 +517,7 @@ module axi_qspi_controller #(
 
   // Controller Mux inputs
   logic [31:0] ctrl_spicmd, ctrl_spiaddr, ctrl_spilen, ctrl_spidum;
+  logic [15:0] ctrl_spimode;
   logic ctrl_trig_rx, ctrl_trig_tx;
 
   // Mem Access = XIP Read, opcode/dummy count configurable via
@@ -543,6 +552,11 @@ module axi_qspi_controller #(
   // set to 32 for 4-byte-addressing flash parts), 8-bit Cmd length.
   assign ctrl_spilen  = (mux_sel) ? {AXI4_RDATA_WIDTH[15:0], reg_xip_addrlen, 8'h08} : reg_spilen;
   assign ctrl_spidum  = (mux_sel) ? {24'b0, reg_xip_dum} : reg_spidum;
+  // [7:0] mode-byte value, [15:8] mode-byte length (0 disables the phase) --
+  // same convention on both sides, so no bit-layout translation needed
+  // (unlike XIP_CMD's own ctrl_spicmd translation).
+  assign ctrl_spimode = (mux_sel) ?
+      {reg_xip_mode_len, reg_xip_mode_val} : {reg_spimode_len, reg_spimode_val};
 
   assign ctrl_trig_rx = (mem_spi_start) ? 1'b1 : trig_rx;  // Trigger needs pulse.
   assign ctrl_trig_tx = (mem_spi_start) ? 1'b0 : trig_tx;
@@ -607,6 +621,7 @@ module axi_qspi_controller #(
       .cfg_spiaddr_i(init_active ? 32'd0 : ctrl_spiaddr),
       .cfg_spilen_i(init_active ? init_spilen : ctrl_spilen),
       .cfg_spidum_i(init_active ? 32'd0 : ctrl_spidum),
+      .cfg_spimode_i(init_active ? 16'd0 : ctrl_spimode),
       .cfg_cs_index_i(init_active ? 2'b00 : cs_index),
 
       .trigger_rx_i(init_active ? 1'b0 : ctrl_trig_rx),

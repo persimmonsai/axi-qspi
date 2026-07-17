@@ -124,6 +124,34 @@ addrmap axi_qspi_regs {
     } SPIDUM @0x14;
 
     reg {
+        name = "SPI Mode Byte";
+        desc = "Optional mode-byte (M7-M0) phase for manual commands, sent
+                after the ADDR phase and before DUMMY -- required by real
+                Quad/Dual I/O opcodes (e.g. 0xEB, 0xBB) that interleave a
+                mode byte between address and dummy cycles at the same I/O
+                width as the address phase (SPICMD's own [29:28] addr_mode
+                field). Reset value len=0 disables this phase entirely,
+                preserving prior behavior for every opcode that doesn't
+                need it (0x03/0x0B/0x3B/0x6B/etc).";
+        field {
+            name = "Mode Value";
+            desc = "Mode byte value to shift out, e.g. 0xFF to explicitly
+                    disengage a flash's continuous-read mode.";
+            sw = rw;
+            hw = r;
+            reset = 0;
+        } val[7:0];
+        field {
+            name = "Mode Length";
+            desc = "Mode-byte phase length in bits. 0 disables the phase;
+                    8 is the typical value for real Quad/Dual I/O opcodes.";
+            sw = rw;
+            hw = r;
+            reset = 0;
+        } len[15:8];
+    } SPIMODE @0x54;
+
+    reg {
         name = "TX FIFO Data";
         field {
             name = "Data";
@@ -307,4 +335,28 @@ addrmap axi_qspi_regs {
             reset = 24;
         } bits[7:0];
     } XIP_ADDRLEN @0x50;
+
+    reg {
+        name = "XIP Mode Byte";
+        desc = "Optional mode-byte (M7-M0) phase for automatic memory-mapped
+                (XIP) reads, sent after ADDR and before DUMMY -- required by
+                real Quad/Dual I/O opcodes (e.g. 0xEB, 0xBB) that interleave
+                a mode byte between address and dummy cycles at the same
+                I/O width as XIP_CMD's own addr_mode field. Reset value
+                len=0 disables this phase entirely, preserving the previous
+                hardcoded behavior exactly for the default 0x03 path and
+                every other opcode that doesn't need it.";
+        field {
+            name = "Mode Value";
+            sw = rw;
+            hw = r;
+            reset = 0;
+        } val[7:0];
+        field {
+            name = "Mode Length";
+            sw = rw;
+            hw = r;
+            reset = 0;
+        } len[15:8];
+    } XIP_MODE @0x58;
 };

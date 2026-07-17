@@ -353,6 +353,7 @@ module tb_axi_qspi_controller;
   localparam REG_SPIDUM = 32'h14;
   localparam REG_TXFIFO = 32'h18;
   localparam REG_RXFIFO = 32'h20;
+  localparam REG_SPIMODE = 32'h54;
 
   // Status register layout (from axi_qspi_master.sv):
   // [6:0]   spi_ctrl_status
@@ -1280,6 +1281,7 @@ module tb_axi_qspi_controller;
         localparam logic [31:0] REG_XIP_CMD = 32'h48;
         localparam logic [31:0] REG_XIP_DUM = 32'h4C;
         localparam logic [31:0] REG_XIP_ADDRLEN = 32'h50;
+        localparam logic [31:0] REG_XIP_MODE = 32'h58;
 
         $display("=== Starting Test 10: Fast Read (0x0B) via configurable XIP CSR ===");
 
@@ -1735,6 +1737,120 @@ module tb_axi_qspi_controller;
 
           // Restore CS0 as default for cleanliness.
           axi_write(REG_CS_DEF, 32'h00000000);
+        end
+
+        // Test 17: manual command 0xEB (Quad I/O Fast Read) via SPICMD +
+        // the new SPIMODE register. Real 0xEB needs QUAD address AND a
+        // mode byte (M7-M0) between ADDR and DUMMY -- previously
+        // unsupported (no MODE state existed in spi_controller.sv, no
+        // SPIMODE/XIP_MODE register existed), which is exactly the
+        // mode-byte gap flagged in this session's general QSPI review.
+        // addr_mode=2 (quad) here is legitimate for 0xEB specifically,
+        // unlike 0x6B (Test 10c/12), which deliberately keeps addr_mode=0.
+        begin
+          logic [31:0] rdata17;
+          localparam logic [31:0] TEST17_ADDR = 32'h00000400;
+
+          $display("=== Starting Test 17: manual command Quad I/O Read (0xEB via SPICMD+SPIMODE) ===");
+
+          flash_model.write_mem(TEST17_ADDR + 0, 8'hA1);
+          flash_model.write_mem(TEST17_ADDR + 1, 8'hA2);
+          flash_model.write_mem(TEST17_ADDR + 2, 8'hA3);
+          flash_model.write_mem(TEST17_ADDR + 3, 8'hA4);
+
+          axi_write(REG_SPICMD, {2'b10, 2'b10, 20'b0, 8'hEB});  // data_mode=2, addr_mode=2
+          axi_write(REG_SPIADR, TEST17_ADDR);
+          axi_write(REG_SPILEN, 32'h00201808);  // Data=32,Addr=24,Cmd=8
+          axi_write(REG_SPIDUM, 32'h00000008);
+          axi_write(REG_SPIMODE, {16'b0, 8'h08, 8'hFF});  // len=8, val=0xFF
+          axi_write(REG_STATUS, 32'h00000100);  // Trigger RX (manual read)
+          wait (dut.op_done);
+          axi_write(REG_STATUS, 0);
+          axi_read(REG_RXFIFO, rdata17);
+
+          if (rdata17 === 32'hA1A2A3A4)
+            $display("[TB] Test 17 (manual 0xEB Quad I/O via SPICMD+SPIMODE) PASSED: %h", rdata17);
+          else
+            $display("[TB] Test 17 (manual 0xEB Quad I/O via SPICMD+SPIMODE) FAILED: got %h expected A1A2A3A4",
+                      rdata17);
+
+          // Restore default (disabled) mode-byte phase for cleanliness.
+          axi_write(REG_SPIMODE, 32'h00000000);
+        end
+
+        // Test 17b: manual 0x6B (Quad Output, no mode byte) run immediately
+        // after Test 17 enabled and then restored SPIMODE -- a regression
+        // guard on the restore itself, not just the default-disabled case
+        // every other test incidentally exercises. If SPIMODE's len field
+        // leaked re-enabled (e.g. a restore that only cleared `val`, or a
+        // stuck MODE state), the controller would insert an extra 8-cycle
+        // MODE phase that spi_flash_model.sv's own 0x6B handling (which
+        // goes straight from ADDR to an 8-cycle ST_DUMMY, since 0x6B was
+        // never taught about ST_MODE) does not expect -- the two sides
+        // would fall out of cycle-alignment and the returned data would be
+        // corrupted, not just merely "still correct by coincidence".
+        begin
+          logic [31:0] rdata17b;
+          localparam logic [31:0] TEST17B_ADDR = 32'h00000420;
+
+          $display("=== Starting Test 17b: manual 0x6B after SPIMODE restore (regression guard) ===");
+
+          flash_model.write_mem(TEST17B_ADDR + 0, 8'h91);
+          flash_model.write_mem(TEST17B_ADDR + 1, 8'h92);
+          flash_model.write_mem(TEST17B_ADDR + 2, 8'h93);
+          flash_model.write_mem(TEST17B_ADDR + 3, 8'h94);
+
+          axi_write(REG_SPICMD, {2'b10, 2'b00, 20'b0, 8'h6B});  // data_mode=2, addr_mode=0
+          axi_write(REG_SPIADR, TEST17B_ADDR);
+          axi_write(REG_SPILEN, 32'h00201808);  // Data=32,Addr=24,Cmd=8
+          axi_write(REG_SPIDUM, 32'h00000008);
+          // Deliberately NOT touching REG_SPIMODE here -- it must already
+          // be 0 (disabled) from Test 17's own restore above.
+          axi_write(REG_STATUS, 32'h00000100);  // Trigger RX (manual read)
+          wait (dut.op_done);
+          axi_write(REG_STATUS, 0);
+          axi_read(REG_RXFIFO, rdata17b);
+
+          if (rdata17b === 32'h91929394)
+            $display("[TB] Test 17b (manual 0x6B after SPIMODE restore) PASSED: %h", rdata17b);
+          else
+            $display("[TB] Test 17b (manual 0x6B after SPIMODE restore) FAILED: got %h expected 91929394",
+                      rdata17b);
+        end
+
+        // Test 18: XIP read via 0xBB (Dual I/O Fast Read), using XIP_CMD's
+        // addr_mode=1/data_mode=1 together with the new XIP_MODE register
+        // -- the XIP-path counterpart to Test 17, confirming the mode-byte
+        // phase also works through the memory-mapped path's own mux/
+        // byte-swap, not just the manual-command path.
+        begin
+          logic [31:0] rdata18;
+
+          $display("=== Starting Test 18: XIP Dual I/O Read (0xBB via XIP_CMD+XIP_MODE) ===");
+
+          flash_model.write_mem(32'h0500, 8'hB1);
+          flash_model.write_mem(32'h0501, 8'hB2);
+          flash_model.write_mem(32'h0502, 8'hB3);
+          flash_model.write_mem(32'h0503, 8'hB4);
+
+          // XIP_CMD: [11:10]=addr_mode=1 (dual), [9:8]=data_mode=1 (dual), [7:0]=cmd
+          axi_write(REG_XIP_CMD, {20'b0, 2'b01, 2'b01, 8'hBB});
+          axi_write(REG_XIP_DUM, 32'h00000008);
+          axi_write(REG_XIP_ADDRLEN, 32'h00000018);
+          axi_write(REG_XIP_MODE, {16'b0, 8'h08, 8'hFF});  // len=8, val=0xFF
+          axi_read(32'h00001500, rdata18);  // -> flash addr (0x1500-0x1000)=0x500
+
+          if (rdata18 === 32'hB4B3B2B1)
+            $display("[TB] Test 18 (XIP 0xBB Dual I/O via XIP_CMD+XIP_MODE) PASSED: %h", rdata18);
+          else
+            $display("[TB] Test 18 (XIP 0xBB Dual I/O via XIP_CMD+XIP_MODE) FAILED: got %h expected B4B3B2B1",
+                      rdata18);
+
+          // Restore defaults for cleanliness.
+          axi_write(REG_XIP_MODE, 32'h00000000);
+          axi_write(REG_XIP_CMD, 32'h00000003);
+          axi_write(REG_XIP_DUM, 32'h00000000);
+          axi_write(REG_XIP_ADDRLEN, 32'h00000018);
         end
       end
 

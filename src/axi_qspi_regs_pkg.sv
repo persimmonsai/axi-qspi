@@ -5,7 +5,7 @@ package axi_qspi_regs_pkg;
 
     localparam AXI_QSPI_REGS_DATA_WIDTH = 32;
     localparam AXI_QSPI_REGS_MIN_ADDR_WIDTH = 7;
-    localparam AXI_QSPI_REGS_SIZE = 'h54;
+    localparam AXI_QSPI_REGS_SIZE = 'h5c;
 
     typedef struct {
         logic [3:0] next;
@@ -226,6 +226,32 @@ package axi_qspi_regs_pkg;
     } axi_qspi_regs__XIP_ADDRLEN__out_t;
 
     typedef struct {
+        logic [7:0] value;
+    } axi_qspi_regs__SPIMODE__val__out_t;
+
+    typedef struct {
+        logic [7:0] value;
+    } axi_qspi_regs__SPIMODE__len__out_t;
+
+    typedef struct {
+        axi_qspi_regs__SPIMODE__val__out_t val;
+        axi_qspi_regs__SPIMODE__len__out_t len;
+    } axi_qspi_regs__SPIMODE__out_t;
+
+    typedef struct {
+        logic [7:0] value;
+    } axi_qspi_regs__XIP_MODE__val__out_t;
+
+    typedef struct {
+        logic [7:0] value;
+    } axi_qspi_regs__XIP_MODE__len__out_t;
+
+    typedef struct {
+        axi_qspi_regs__XIP_MODE__val__out_t val;
+        axi_qspi_regs__XIP_MODE__len__out_t len;
+    } axi_qspi_regs__XIP_MODE__out_t;
+
+    typedef struct {
         axi_qspi_regs__STATUS__out_t STATUS;
         axi_qspi_regs__CLKDIV__out_t CLKDIV;
         axi_qspi_regs__SPICMD__out_t SPICMD;
@@ -246,5 +272,7 @@ package axi_qspi_regs_pkg;
         axi_qspi_regs__XIP_CMD__out_t XIP_CMD;
         axi_qspi_regs__XIP_DUM__out_t XIP_DUM;
         axi_qspi_regs__XIP_ADDRLEN__out_t XIP_ADDRLEN;
+        axi_qspi_regs__SPIMODE__out_t SPIMODE;
+        axi_qspi_regs__XIP_MODE__out_t XIP_MODE;
     } axi_qspi_regs__out_t;
 endpackage
