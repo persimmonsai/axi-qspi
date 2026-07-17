@@ -227,4 +227,84 @@ addrmap axi_qspi_regs {
             hw = r;
         } val[31:0];
     } CS_M_3 @0x44;
+
+    reg {
+        name = "XIP Command";
+        desc = "SPI opcode and I/O widths used for automatic memory-mapped
+                (XIP) reads triggered by an AXI read hitting the flash's
+                mapped address range. Reset values (cmd=0x03, data_mode=0,
+                addr_mode=0, all Standard) preserve the previous hardcoded,
+                zero-dummy, single-lane behavior exactly, so existing
+                designs and software are unaffected unless this register
+                is explicitly reprogrammed.";
+        field {
+            name = "Command";
+            desc = "SPI opcode byte, e.g. 0x03 (Standard Read), 0x0B
+                    (Fast Read), 0x3B (Dual Output Fast Read), 0x6B
+                    (Quad Output Fast Read).";
+            sw = rw;
+            hw = r;
+            reset = 8'h03;
+        } cmd[7:0];
+        field {
+            name = "Data I/O Mode";
+            desc = "Data-phase I/O width: 0=Standard (single I/O), 1=Dual,
+                    2=Quad. Matches spi_controller.sv's own
+                    cfg_spicmd_i[31:30] convention -- e.g. data_mode=2 for
+                    0x6B/0xEB.";
+            sw = rw;
+            hw = r;
+            reset = 0;
+        } data_mode[9:8];
+        field {
+            name = "Address I/O Mode";
+            desc = "Address-phase I/O width, INDEPENDENT of Data I/O
+                    Mode: 0=Standard (single I/O), 1=Dual, 2=Quad. Matches
+                    spi_controller.sv's own cfg_spicmd_i[29:28] convention.
+                    Most fast-read opcodes (0x0B/0x3B/0x6B) keep the
+                    address single-lane even when the data phase is
+                    dual/quad -- leave this at 0 (Standard) for those.
+                    Only opcodes with their own quad/dual ADDRESS phase
+                    (e.g. 0xEB, 0xBB -- not yet fully supported here, see
+                    the missing mode-byte phase) need this set to
+                    1 or 2.";
+            sw = rw;
+            hw = r;
+            reset = 0;
+        } addr_mode[11:10];
+    } XIP_CMD @0x48;
+
+    reg {
+        name = "XIP Dummy Cycles";
+        desc = "Dummy cycle count used for automatic memory-mapped (XIP)
+                reads. Reset value 0 matches CMD 0x03's own zero-dummy
+                semantics exactly. Must be reprogrammed together with
+                XIP_CMD if switching to a fast-read opcode (e.g. 0x0B)
+                that requires dummy cycles -- check the target flash's
+                own datasheet for the required count (commonly 8 for
+                0x0B/0x3B/0x6B at max frequency, sometimes fewer via the
+                flash's own configuration register).";
+        field {
+            name = "Dummy";
+            sw = rw;
+            hw = r;
+            reset = 0;
+        } dum[7:0];
+    } XIP_DUM @0x4C;
+
+    reg {
+        name = "XIP Address Length";
+        desc = "Address phase length in bits for automatic memory-mapped
+                (XIP) reads. Reset value 24 (3-byte addressing) preserves
+                the previous hardcoded behavior exactly. Set to 32 for
+                4-byte addressing, required by larger-density flash parts
+                (typically >128Mbit) using opcodes such as 0x13/0x0C/0x6C
+                or a flash-side extended-address-mode configuration.";
+        field {
+            name = "Length";
+            sw = rw;
+            hw = r;
+            reset = 24;
+        } bits[7:0];
+    } XIP_ADDRLEN @0x50;
 };

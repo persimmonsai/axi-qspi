@@ -11,3 +11,11 @@ deps/
 *.mem
 sw/include/
 doc/rdl/
+
+# `make gen`'s own PeakRDL output directory -- regenerated fresh from
+# src/axi_qspi_regs.rdl every run, not itself a real source. The checked-in
+# src/axi_qspi_regs_pkg.sv / src/axi_qspi_regs.sv are the real, canonical
+# RTL (referenced by Bender.yml, used by every real build) and must be
+# manually re-synced (copied) from here after editing the .rdl -- there is
+# no automated copy-back step.
+src/generated/

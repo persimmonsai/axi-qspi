@@ -30,6 +30,10 @@ module spi_controller #(
     output logic [FIFO_DATA_WIDTH-1:0] rx_fifo_data_o,
     output logic                       rx_fifo_valid_o,
 
+    // Most recently completed RX word, independent of the shared FIFO's
+    // own head/pop bookkeeping -- see rx_last_word_o's own comment below.
+    output logic [FIFO_DATA_WIDTH-1:0] rx_last_word_o,
+
     // FIFO Status for Regs
     output logic [3:0] tx_elements_o,
     output logic [3:0] rx_elements_o,
@@ -111,6 +115,25 @@ module spi_controller #(
   assign rx_elements_o   = rx_count[3:0];
   assign rx_fifo_data_o  = rx_fifo[rx_rd_ptr];
   assign rx_fifo_valid_o = (rx_count > 0);
+
+  // rx_last_word_o: captures rx_push_data directly, independent of the
+  // shared rx_fifo's own head/pop pointers. A caller that only cares
+  // about "the word THIS transaction just received" (e.g. a memory-mapped
+  // read, which is a single request/response, not a queue consumer)
+  // should read this instead of rx_fifo_data_o -- reading the FIFO's own
+  // head is only correct if the FIFO was guaranteed empty before this
+  // transaction started, which does not hold when a shared consumer
+  // (e.g. software polling RXFIFO on a manual command) has left older,
+  // undrained entries sitting ahead of this transaction's own push (a
+  // real, confirmed bug this register exists to fix -- see the git
+  // history / commit message touching this file for the failure mode).
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      rx_last_word_o <= '0;
+    end else if (rx_push_enable) begin
+      rx_last_word_o <= rx_push_data;
+    end
+  end
 
   // --- Clock Divider ---
   logic [31:0] clk_cnt;
@@ -377,8 +400,22 @@ module spi_controller #(
       ADDR: begin
         spi_oe_o   = 4'b0001;
         spi_mode_o = 2'b00;
-        // Check if Quad Address?
-        if (cfg_spicmd_i[31:30] == 2'b10) begin
+        // Address-phase I/O width is independent from the data phase's own
+        // width. cfg_spicmd_i[31:30] (checked in DATA_TX/DATA_RX below)
+        // selects DATA width; cfg_spicmd_i[29:28] separately selects
+        // ADDRESS width here. This matters because e.g. 0x6B (Quad Output
+        // Fast Read) needs quad DATA but a single-lane (standard) ADDRESS,
+        // while 0xEB (Quad I/O Fast Read) needs quad address AND quad
+        // data -- coupling the two behind one field (as this code
+        // previously did, checking cfg_spicmd_i[31:30] here too) made
+        // 0x6B unusable: it would incorrectly send the address in quad
+        // mode, which real flash (and this repo's own flash models, which
+        // gate address-phase lane count on their own persistent QPI-mode
+        // flag, not on the current opcode) does not expect, causing a
+        // real, confirmed address-decode failure. Real, confirmed via a
+        // dedicated regression -- see tb_axi_qspi_controller.sv's Test 10c.
+        if (cfg_spicmd_i[29:28] == 2'b10) begin
+          // Quad Address
           spi_mode_o = 2'b01;  // Quad Output
           spi_oe_o   = 4'b1111;
           if (bit_cnt_q >= 4) spi_sdo_o = shift_reg_q[bit_cnt_q-1-:4];
@@ -405,6 +442,36 @@ module spi_controller #(
               end
             end else begin
               bit_cnt_d = bit_cnt_q - 4;
+            end
+          end
+        end else if (cfg_spicmd_i[29:28] == 2'b01) begin
+          // Dual Address
+          spi_mode_o = 2'b01;  // Dual Output
+          spi_oe_o   = 4'b0011;
+          if (bit_cnt_q >= 2) spi_sdo_o[1:0] = shift_reg_q[bit_cnt_q-1-:2];
+
+          if (pulse_fe_effective) begin
+            if (bit_cnt_q <= 2) begin
+              // Next
+              if (cfg_spidum_i > 0) begin
+                state_d   = DUMMY;
+                bit_cnt_d = cfg_spidum_i;
+              end else if (trigger_tx_q) begin
+                state_d = DATA_TX;
+                bit_cnt_d = cfg_spilen_i[31:16];
+                tx_word_cnt_d = 0;
+                if (tx_count > 0) begin
+                  shift_reg_d   = tx_fifo[tx_rd_ptr];
+                  tx_pop_enable = 1;
+                  tx_word_cnt_d = 32;
+                end
+              end else begin
+                state_d = DATA_RX;
+                bit_cnt_d = cfg_spilen_i[31:16];
+                tx_word_cnt_d = 0;
+              end
+            end else begin
+              bit_cnt_d = bit_cnt_q - 2;
             end
           end
         end else begin

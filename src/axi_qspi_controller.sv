@@ -82,6 +82,11 @@ module axi_qspi_controller #(
   logic [31:0] reg_spiaddr;
   logic [31:0] reg_spilen;
   logic [31:0] reg_spidum;
+  logic [ 7:0] reg_xip_cmd;
+  logic [ 1:0] reg_xip_data_mode;
+  logic [ 1:0] reg_xip_addr_mode;
+  logic [ 7:0] reg_xip_dum;
+  logic [ 7:0] reg_xip_addrlen;
   logic [31:0] reg_cs_def;
   logic [31:0] reg_cs_a_0;
   logic [31:0] reg_cs_m_0;
@@ -108,6 +113,7 @@ module axi_qspi_controller #(
   logic                        rx_pop;
   logic [AXI4_RDATA_WIDTH-1:0] rx_data;
   logic                        rx_valid;
+  logic [AXI4_RDATA_WIDTH-1:0] rx_last_word;
   logic [3:0] tx_lvl, rx_lvl;
   logic mem_pop;
 
@@ -355,7 +361,17 @@ module axi_qspi_controller #(
   assign hwif_in.rst_n = s_axi_aresetn;
   assign hwif_in.STATUS.rx_cnt.next = rx_lvl;
   assign hwif_in.STATUS.tx_cnt.next = tx_lvl;
-  assign hwif_in.RXFIFO.data.next = rx_data[31:0];  // Truncate if wider
+  // Read rx_last_word (this command's own freshly-captured word), not
+  // rx_data (the shared RX FIFO's own head) -- same real bug class as the
+  // XIP path's own rx_last_word_o fix: every manual command in this file
+  // is used as "trigger once, read RXFIFO once" (never a real multi-
+  // entry queue), so a stale, undrained entry left by an EARLIER manual
+  // command (or by an XIP transaction sharing the same FIFO) can sit
+  // ahead of THIS command's own push. Every existing manual-command test
+  // only checked bit 0 (WIP), which happens to tolerate stale upper
+  // bits -- a real 32-bit check (see tb_axi_qspi_controller.sv's Test 12,
+  // a manual quad-mode read) is what actually caught this.
+  assign hwif_in.RXFIFO.data.next = rx_last_word[31:0];  // Truncate if wider
 
   assign reg_clkdiv = hwif_out.CLKDIV.div.value;
   assign reg_clkdiv_bypass = hwif_out.CLKDIV.bypass.value;
@@ -364,6 +380,11 @@ module axi_qspi_controller #(
   assign reg_spiaddr = hwif_out.SPIADR.addr.value;
   assign reg_spilen = hwif_out.SPILEN.len.value;
   assign reg_spidum = hwif_out.SPIDUM.dum.value;
+  assign reg_xip_cmd = hwif_out.XIP_CMD.cmd.value;
+  assign reg_xip_data_mode = hwif_out.XIP_CMD.data_mode.value;
+  assign reg_xip_addr_mode = hwif_out.XIP_CMD.addr_mode.value;
+  assign reg_xip_dum = hwif_out.XIP_DUM.dum.value;
+  assign reg_xip_addrlen = hwif_out.XIP_ADDRLEN.bits.value;
   assign reg_cs_def = hwif_out.CS_DEF.cs.value;
   assign reg_cs_a_0 = hwif_out.CS_A_0.val.value;
   assign reg_cs_m_0 = hwif_out.CS_M_0.val.value;
@@ -490,7 +511,11 @@ module axi_qspi_controller #(
   logic [31:0] ctrl_spicmd, ctrl_spiaddr, ctrl_spilen, ctrl_spidum;
   logic ctrl_trig_rx, ctrl_trig_tx;
 
-  // We assume Mem Access = XIP Read (Std Read 0x03)
+  // Mem Access = XIP Read, opcode/dummy count configurable via
+  // XIP_CMD/XIP_DUM (reset to 0x03/0, i.e. Standard Read with zero dummy
+  // cycles, matching the previous hardcoded behavior exactly). Software
+  // must reprogram both together before switching to a dummy-cycle
+  // opcode (e.g. 0x0B) -- see axi_qspi_regs.rdl's own field descriptions.
 
   // Mem Access FSM Types
   typedef enum logic [1:0] {
@@ -504,13 +529,20 @@ module axi_qspi_controller #(
   logic     mux_sel;
   assign mux_sel      = (mem_spi_start || m_state == M_WAIT);
 
-  // Use CMD 03h (3-byte Read) for Memory Mapped Access (Flash Model Limit)
-  assign ctrl_spicmd  = (mux_sel) ? 32'h03 : reg_spicmd;
+  // Bits [31:30] are spi_controller.sv's own DATA-phase I/O-mode select
+  // (0=Standard, 1=Dual, 2=Quad -- see cfg_spicmd_i[31:30] there); bits
+  // [29:28] independently select ADDRESS-phase I/O mode
+  // (cfg_spicmd_i[29:28] -- e.g. 0x6B needs data_mode=2 but addr_mode=0,
+  // since real Quad Output Fast Read keeps the address single-lane); bits
+  // [27:8] unused, bits [7:0] the actual opcode byte.
+  assign ctrl_spicmd  = (mux_sel) ?
+      {reg_xip_data_mode, reg_xip_addr_mode, 20'b0, reg_xip_cmd} : reg_spicmd;
   // Pass address directly (Controller handles 24-bit truncation if needed)
   assign ctrl_spiaddr = (mux_sel) ? mem_spi_addr : reg_spiaddr;
-  // 32-bit Data (0x20), 24-bit Addr (0x18), 8-bit Cmd (0x08).
-  assign ctrl_spilen  = (mux_sel) ? (32'h00001808 | (AXI4_RDATA_WIDTH << 16)) : reg_spilen;
-  assign ctrl_spidum  = (mux_sel) ? 32'h00000000 : reg_spidum;
+  // 32-bit Data length, XIP_ADDRLEN-configurable Addr length (default 24,
+  // set to 32 for 4-byte-addressing flash parts), 8-bit Cmd length.
+  assign ctrl_spilen  = (mux_sel) ? {AXI4_RDATA_WIDTH[15:0], reg_xip_addrlen, 8'h08} : reg_spilen;
+  assign ctrl_spidum  = (mux_sel) ? {24'b0, reg_xip_dum} : reg_spidum;
 
   assign ctrl_trig_rx = (mem_spi_start) ? 1'b1 : trig_rx;  // Trigger needs pulse.
   assign ctrl_trig_tx = (mem_spi_start) ? 1'b0 : trig_tx;
@@ -588,6 +620,7 @@ module axi_qspi_controller #(
       .rx_fifo_pop_i  (rx_pop),
       .rx_fifo_data_o (rx_data),
       .rx_fifo_valid_o(rx_valid),
+      .rx_last_word_o (rx_last_word),
       .busy_o         (spi_busy),
       .tx_elements_o  (tx_lvl),
       .rx_elements_o  (rx_lvl),
@@ -774,8 +807,18 @@ module axi_qspi_controller #(
           if (op_done) begin
             m_state <= M_DONE;
             // Byte-swap: SPI controller packs bytes MSB-first; AXI is LE.
+            // Read rx_last_word (THIS transaction's own freshly-captured
+            // word), not rx_data (the shared RX FIFO's own head) -- the
+            // FIFO is also used by manual/software commands via RXFIFO,
+            // and any entries they leave undrained would otherwise sit
+            // ahead of this transaction's own push, causing this read to
+            // return stale data from an unrelated, earlier transaction
+            // (a real, confirmed bug: see rx_last_word_o's own comment in
+            // spi_controller.sv). mem_pop below still fires to drain the
+            // FIFO of this transaction's own push and prevent overflow;
+            // it no longer needs to be read from for correctness.
             for (int i = 0; i < AXI4_RDATA_WIDTH / 8; i++) begin
-              mem_rdata[i*8+:8] <= rx_data[(AXI4_RDATA_WIDTH/8-1-i)*8+:8];
+              mem_rdata[i*8+:8] <= rx_last_word[(AXI4_RDATA_WIDTH/8-1-i)*8+:8];
             end
           end
         end
@@ -807,7 +850,29 @@ module axi_qspi_controller #(
     case (m_state)
       M_IDLE: begin
         if (mem_arvalid && !spi_busy) begin
-          mem_spi_addr <= (mem_araddr - 32'h1000) & ~32'h7;  // align to 8-byte AXI beat
+          // NOTE: "- 32'h1000" is intentionally the SAME fixed subtraction
+          // for every chip select, not each CS's own CS_A_x base -- this
+          // is a real, deliberate, already-documented design convention
+          // (see tb_axi_qspi_controller.sv's own Test 7 comment, "Initialize
+          // Flash 1 at correct address offset (0x2000 - 0x1000 = 0x1000)":
+          // all chip selects share ONE continuous flash address space
+          // offset from the fixed register/memory decode boundary at
+          // 0x1000, not per-CS-relative addressing). An earlier attempt
+          // to "fix" this to subtract ar_cs_index's own base broke that
+          // already-working, intentionally-designed test -- reverted.
+          //
+          // Align down to the real per-beat byte count (AXI4_RDATA_WIDTH/8
+          // -- 4 bytes for the common 32-bit case), not a hardcoded 8:
+          // masking to 8 regardless of bus width silently corrupted any
+          // single-beat (non-burst) read at a word-aligned but non-8-byte-
+          // aligned address (e.g. offset 4, 12, 20...) for a 32-bit bus,
+          // returning the PRECEDING word's data instead -- a real,
+          // confirmed bug (see tb_axi_qspi_controller_fpga_synt.sv, which
+          // caught it: a standalone 0x0B read at offset 4 returned offset
+          // 0's data). Burst continuations were never affected, since
+          // mem_spi_addr's own +=(AXI4_RDATA_WIDTH/8) increment below
+          // never re-applies this mask.
+          mem_spi_addr <= (mem_araddr - 32'h1000) & ~(AXI4_RDATA_WIDTH / 8 - 1);
         end
       end
       M_DONE: begin

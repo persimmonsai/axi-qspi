@@ -48,7 +48,7 @@ verilator: gen
         +define+USE_STD_SPI_MODEL \
         +incdir+deps/axi/include \
 		src/axi_qspi_regs_pkg.sv \
-		src/generated/axi_qspi_regs.sv \
+		src/axi_qspi_regs.sv \
 		src/spi_flash_model.sv \
 		src/spi_controller.sv \
 		src/axi_qspi_controller.sv \

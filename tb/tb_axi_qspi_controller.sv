@@ -591,6 +591,36 @@ module tb_axi_qspi_controller;
     axi_write(REG_CS_A_0, 32'h00000000);
     axi_write(REG_CS_M_0, 32'hFF000000);
 
+    // --- Baseline RX-FIFO sanity check: two back-to-back memory-mapped
+    // reads at DIFFERENT addresses via the default (0x03, zero-dummy) XIP
+    // path, run as early as possible (before any other test could leave
+    // residue in the RX FIFO) to isolate whether a second read to a new
+    // address ever returns stale data from the first.
+    begin
+      logic [31:0] base_rd;
+      axi_write(REG_CS_A_0, 32'h00001000);
+      axi_write(REG_CS_M_0, 32'hFFFFF000);
+      axi_write(REG_CS_DEF, 32'h00000000);
+
+      flash_model.write_mem(32'h0000, 8'hAA);
+      flash_model.write_mem(32'h0001, 8'hBB);
+      flash_model.write_mem(32'h0002, 8'hCC);
+      flash_model.write_mem(32'h0003, 8'hDD);
+      flash_model.write_mem(32'h0100, 8'h11);
+      flash_model.write_mem(32'h0101, 8'h22);
+      flash_model.write_mem(32'h0102, 8'h33);
+      flash_model.write_mem(32'h0103, 8'h44);
+
+      axi_read(32'h00001000, base_rd);
+      $display("[BASELINE] Read #1 (flash addr 0): got %h expected ddccbbaa", base_rd);
+
+      axi_read(32'h00001100, base_rd);
+      $display("[BASELINE] Read #2 (flash addr 0x100): got %h expected 44332211", base_rd);
+
+      axi_read(32'h00001000, base_rd);
+      $display("[BASELINE] Read #3 (flash addr 0 again): got %h expected ddccbbaa", base_rd);
+    end
+
     // Memory Mapped Verification (Random Access)
     if (0) begin
       verify_memory_mapped_read(1);
@@ -1233,6 +1263,481 @@ module tb_axi_qspi_controller;
       else $display("[TB] Post-Init Read Data: %h (Expected DDCCBBAA)", rdata);
 
       $display("[TB] Test 9 Complete.");
+
+      // --- Test 10: configurable XIP path (XIP_CMD/XIP_DUM/XIP_ADDRLEN) ---
+      // Uses a NONZERO address (0x100, distinct from every earlier test's
+      // own address-0 reads) with its own distinct expected value -- this
+      // is deliberate: a same-address repeat can pass even when the RX
+      // path returns stale data from a PREVIOUS transaction, which is
+      // exactly the real, confirmed bug this regression is guarding
+      // against (see rx_last_word_o in spi_controller.sv and its use in
+      // axi_qspi_controller.sv's M_WAIT->M_DONE byte-swap -- reading the
+      // shared RX FIFO's own head instead, as this code did before that
+      // fix, returns whatever unrelated entry Tests 1-9's own manual
+      // commands left undrained ahead of this transaction's own push).
+      begin
+        logic [31:0] rdata10;
+        localparam logic [31:0] REG_XIP_CMD = 32'h48;
+        localparam logic [31:0] REG_XIP_DUM = 32'h4C;
+        localparam logic [31:0] REG_XIP_ADDRLEN = 32'h50;
+
+        $display("=== Starting Test 10: Fast Read (0x0B) via configurable XIP CSR ===");
+
+        // Explicit, self-contained preload (Test 9 leaves the flash model in
+        // an unrelated state via its own RST(99h)/Auto-Init sequence, so
+        // don't rely on state left over from it).
+        flash_model.write_mem(32'h0000, 8'hAA);
+        flash_model.write_mem(32'h0001, 8'hBB);
+        flash_model.write_mem(32'h0002, 8'hCC);
+        flash_model.write_mem(32'h0003, 8'hDD);
+        flash_model.write_mem(32'h0100, 8'h11);
+        flash_model.write_mem(32'h0101, 8'h22);
+        flash_model.write_mem(32'h0102, 8'h33);
+        flash_model.write_mem(32'h0103, 8'h44);
+
+        axi_write(REG_CS_A_0, 32'h00001000);
+        axi_write(REG_CS_M_0, 32'hFFFFF000);
+        axi_write(REG_CS_DEF, 32'h00000000);  // CS0
+
+        // Fast Read (0x0B), Standard I/O mode, 8 dummy cycles, 24-bit addr --
+        // confirms the XIP path can be reconfigured off the default 0x03
+        // opcode to a dummy-cycle-bearing opcode, e.g. to let an FPGA
+        // emulation's flash model use a real block/UltraRAM primitive
+        // (which needs registered read latency that 0x03's own zero-dummy
+        // semantics cannot accommodate -- see spi_flash_model_fpga_synt.sv).
+        axi_write(REG_XIP_CMD, 32'h0000000B);
+        axi_write(REG_XIP_DUM, 32'h00000008);
+        axi_write(REG_XIP_ADDRLEN, 32'h00000018);
+
+        axi_read(32'h00001100, rdata10);  // -> flash addr 0x100
+        if (rdata10 === 32'h44332211)
+          $display("[TB] Test 10 (Fast Read 0x0B via XIP CSR, nonzero addr) PASSED: %h", rdata10);
+        else
+          $display("[TB] Test 10 (Fast Read 0x0B via XIP CSR, nonzero addr) FAILED: got %h expected 44332211",
+                    rdata10);
+
+        // Restore default XIP config (cmd=0x03, mode=0, dummy=0, addrlen=24)
+        // and confirm the original zero-dummy path still works too, now
+        // reading back the OTHER (address-0) pattern -- again a different
+        // address/value than Test 10 just used, to keep this a real
+        // stale-data check rather than a same-value coincidence.
+        axi_write(REG_XIP_CMD, 32'h00000003);
+        axi_write(REG_XIP_DUM, 32'h00000000);
+        axi_write(REG_XIP_ADDRLEN, 32'h00000018);
+        axi_read(32'h00001000, rdata10);  // -> flash addr 0
+        if (rdata10 === 32'hDDCCBBAA)
+          $display("[TB] Test 10b (Standard Read 0x03 via XIP CSR) PASSED: %h", rdata10);
+        else
+          $display("[TB] Test 10b (Standard Read 0x03 via XIP CSR) FAILED: got %h expected DDCCBBAA",
+                    rdata10);
+
+        // Test 10d: 0x3B (Dual Output Fast Read) via mode=1 -- ADDR state's
+        // else-branch keeps address single-lane for both std and dual
+        // (only the quad check forces quad address), so this is expected
+        // to work correctly.
+        axi_write(REG_XIP_CMD, {22'b0, 2'b01, 8'h3B});
+        axi_write(REG_XIP_DUM, 32'h00000008);
+        axi_write(REG_XIP_ADDRLEN, 32'h00000018);
+        axi_read(32'h00001100, rdata10);  // -> flash addr 0x100
+        if (rdata10 === 32'h44332211)
+          $display("[TB] Test 10d (0x3B via mode=1, nonzero addr) PASSED: %h", rdata10);
+        else
+          $display("[TB] Test 10d (0x3B via mode=1, nonzero addr) FAILED: got %h expected 44332211",
+                    rdata10);
+
+        // Test 10c: 0x6B (Quad Output Fast Read) -- data_mode=2 (quad),
+        // addr_mode left at its default (0, Standard). Previously this
+        // opcode was unusable: cfg_spicmd_i[31:30] used to select BOTH
+        // address and data I/O width together, so quad DATA (needed for
+        // 0x6B) always forced quad ADDRESS too, which real 0x6B does not
+        // use -- now that address I/O width is its own, independent
+        // field (cfg_spicmd_i[29:28] / XIP_CMD.addr_mode), this is
+        // expected to pass.
+        axi_write(REG_XIP_CMD, {22'b0, 2'b10, 8'h6B});  // data_mode=2, addr_mode=0
+        axi_write(REG_XIP_DUM, 32'h00000008);
+        axi_write(REG_XIP_ADDRLEN, 32'h00000018);
+        axi_read(32'h00001100, rdata10);  // -> flash addr 0x100
+        if (rdata10 === 32'h44332211)
+          $display("[TB] Test 10c (0x6B, data_mode=2 addr_mode=0, nonzero addr) PASSED: %h", rdata10);
+        else
+          $display("[TB] Test 10c (0x6B, data_mode=2 addr_mode=0, nonzero addr) FAILED: got %h expected 44332211",
+                    rdata10);
+
+        // Test 10e: multi-beat AXI burst (ARLEN=3, 4 beats) via the XIP
+        // path. axi_read_burst() exists in this file but was never
+        // actually called anywhere -- burst reads (which real code
+        // execution / cache-line fills depend on constantly) were
+        // completely untested. Verifies EACH beat's own distinct value,
+        // not just that the burst completes, to also confirm
+        // mem_spi_addr's own per-beat auto-increment (mem_spi_addr <=
+        // mem_spi_addr + (AXI4_RDATA_WIDTH/8) on each accepted beat).
+        begin
+          logic [31:0] burst_expected[4];
+          int burst_errors;
+          burst_errors = 0;
+          burst_expected[0] = 32'h03020100;
+          burst_expected[1] = 32'h13121110;
+          burst_expected[2] = 32'h23222120;
+          burst_expected[3] = 32'h33323130;
+
+          flash_model.write_mem(32'h0200, 8'h00);
+          flash_model.write_mem(32'h0201, 8'h01);
+          flash_model.write_mem(32'h0202, 8'h02);
+          flash_model.write_mem(32'h0203, 8'h03);
+          flash_model.write_mem(32'h0204, 8'h10);
+          flash_model.write_mem(32'h0205, 8'h11);
+          flash_model.write_mem(32'h0206, 8'h12);
+          flash_model.write_mem(32'h0207, 8'h13);
+          flash_model.write_mem(32'h0208, 8'h20);
+          flash_model.write_mem(32'h0209, 8'h21);
+          flash_model.write_mem(32'h020A, 8'h22);
+          flash_model.write_mem(32'h020B, 8'h23);
+          flash_model.write_mem(32'h020C, 8'h30);
+          flash_model.write_mem(32'h020D, 8'h31);
+          flash_model.write_mem(32'h020E, 8'h32);
+          flash_model.write_mem(32'h020F, 8'h33);
+
+          axi_write(REG_XIP_CMD, 32'h00000003);
+          axi_write(REG_XIP_DUM, 32'h00000000);
+          axi_write(REG_XIP_ADDRLEN, 32'h00000018);
+
+          @(posedge clk);
+          s_axi_arvalid <= 1;
+          s_axi_araddr  <= 32'h00001200;  // -> flash addr 0x200
+          s_axi_arid    <= 0;
+          s_axi_arlen   <= 8'd3;  // 4 beats
+          s_axi_aruser  <= 0;
+          wait (s_axi_arready);
+          @(posedge clk);
+          s_axi_arvalid <= 0;
+          s_axi_rready  <= 1;
+          for (int beat = 0; beat <= 3; beat++) begin
+            // Race-free pulse detection: always advance at least one new
+            // edge before sampling, rather than a bare wait() -- which
+            // can return immediately if rvalid happens to still read 1
+            // (or has just gone 1) within the same timestep's own NBA
+            // update ordering, causing this loop to re-sample the SAME
+            // beat's data on the next iteration instead of waiting for
+            // the next real pulse. This is what caused an earlier,
+            // apparent burst-read failure that turned out to be a
+            // testbench race, not a real RTL bug -- confirmed by
+            // re-running with this exact fix and seeing all 4 beats
+            // (and RLAST) come back correct.
+            do @(posedge clk); while (!s_axi_rvalid);
+            if (s_axi_rdata !== burst_expected[beat]) begin
+              burst_errors++;
+              $display("[TB] Test 10e burst beat %0d FAILED: got %h expected %h", beat, s_axi_rdata,
+                        burst_expected[beat]);
+            end
+            if (beat == 3 && !s_axi_rlast) begin
+              burst_errors++;
+              $display("[TB] Test 10e FAILED: RLAST not asserted on final beat");
+            end
+          end
+          s_axi_rready <= 0;
+
+          if (burst_errors == 0) $display("[TB] Test 10e (4-beat AXI burst via XIP) PASSED");
+          else $display("[TB] Test 10e (4-beat AXI burst via XIP) FAILED: %0d beat error(s)", burst_errors);
+        end
+
+        // Test 10f: single-beat (non-burst) XIP read at a word-aligned but
+        // NOT 8-byte-aligned address (offset 4). Real, confirmed bug:
+        // mem_spi_addr's own address-latch used a hardcoded `& ~32'h7`
+        // (8-byte alignment) regardless of AXI4_RDATA_WIDTH, silently
+        // rounding any single-beat read at such an offset down to the
+        // PRECEDING 8-byte-aligned word's data. Burst reads never
+        // exposed this (only the first beat is masked; later beats
+        // increment separately without re-masking), which is exactly
+        // why Test 10e above didn't catch it -- caught instead by
+        // tb_axi_qspi_controller_fpga_synt.sv's own standalone 0x0B
+        // read at offset 4.
+        begin
+          logic [31:0] rdata10f;
+          flash_model.write_mem(32'h0100, 8'h11);
+          flash_model.write_mem(32'h0101, 8'h22);
+          flash_model.write_mem(32'h0102, 8'h33);
+          flash_model.write_mem(32'h0103, 8'h44);
+          flash_model.write_mem(32'h0104, 8'hAA);
+          flash_model.write_mem(32'h0105, 8'hBB);
+          flash_model.write_mem(32'h0106, 8'hCC);
+          flash_model.write_mem(32'h0107, 8'hDD);
+
+          axi_write(REG_XIP_CMD, 32'h00000003);
+          axi_write(REG_XIP_DUM, 32'h00000000);
+          axi_write(REG_XIP_ADDRLEN, 32'h00000018);
+          axi_read(32'h00001104, rdata10f);  // -> flash addr 0x104 (not 8-byte aligned)
+          if (rdata10f === 32'hDDCCBBAA)
+            $display("[TB] Test 10f (single-beat read, non-8-byte-aligned addr) PASSED: %h",
+                      rdata10f);
+          else
+            $display("[TB] Test 10f (single-beat read, non-8-byte-aligned addr) FAILED: got %h expected DDCCBBAA",
+                      rdata10f);
+        end
+
+        // Test 11: 4-byte addressing (EN4BA + XIP_ADDRLEN=32), never
+        // exercised before. spi_flash_model.sv's own full_cnt only
+        // becomes 32 (vs the default 24) once addr_mode_4b is set via a
+        // real EN4BA (0xB7) command -- matching real flash chips, where
+        // just using a "_4byte" opcode variant like 0x13 alone is not
+        // enough on its own. Uses an address >0xFFFFFF specifically so a
+        // latent 24-bit truncation would be caught (a small in-range
+        // address could pass "by accident" even with a broken 32-bit
+        // path). CS0's own mapped window is widened for this one check
+        // (the earlier CS_M_0=0xFFFFF000 config only exposes a 4KB AXI
+        // window, which can't reach a >24-bit flash address at all) and
+        // restored afterward.
+        begin
+          logic [31:0] rdata11;
+          localparam logic [31:0] TEST11_FLASH_ADDR = 32'h01000010;  // > 0xFFFFFF
+
+          $display("=== Starting Test 11: 4-byte addressing (EN4BA + XIP_ADDRLEN=32) ===");
+
+          flash_model.write_mem(TEST11_FLASH_ADDR + 0, 8'hDE);
+          flash_model.write_mem(TEST11_FLASH_ADDR + 1, 8'hAD);
+          flash_model.write_mem(TEST11_FLASH_ADDR + 2, 8'hBE);
+          flash_model.write_mem(TEST11_FLASH_ADDR + 3, 8'hEF);
+
+          axi_write(REG_CS_A_0, 32'h00000000);
+          axi_write(REG_CS_M_0, 32'h80000000);  // widen to just bit31=0
+          axi_write(REG_CS_DEF, 32'h00000000);
+
+          flash_cmd(8'hB7);  // EN4BA
+
+          axi_write(REG_XIP_CMD, 32'h00000013);  // 0x13: 4-byte-address Standard Read
+          axi_write(REG_XIP_DUM, 32'h00000000);
+          axi_write(REG_XIP_ADDRLEN, 32'h00000020);  // 32 bits
+
+          // mem_spi_addr = (araddr - 0x1000) & ~3, so araddr must be
+          // TEST11_FLASH_ADDR + 0x1000 for the flash side to see exactly
+          // TEST11_FLASH_ADDR.
+          axi_read(TEST11_FLASH_ADDR + 32'h1000, rdata11);
+          if (rdata11 === 32'hEFBEADDE)
+            $display("[TB] Test 11 (4-byte addressing, addr=%h) PASSED: %h", TEST11_FLASH_ADDR,
+                      rdata11);
+          else
+            $display("[TB] Test 11 (4-byte addressing, addr=%h) FAILED: got %h expected EFBEADDE",
+                      TEST11_FLASH_ADDR, rdata11);
+
+          flash_cmd(8'hE9);  // EX4BA, back to 3-byte addressing
+          axi_write(REG_CS_A_0, 32'h00001000);
+          axi_write(REG_CS_M_0, 32'hFFFFF000);
+          axi_write(REG_CS_DEF, 32'h00000000);
+        end
+
+        // Test 12: manual command (SPICMD register), not XIP, using
+        // data_mode=2/addr_mode=0 (0x6B) -- sanity check that the
+        // addr_mode/data_mode decoupling fix works identically via the
+        // pre-existing manual-command path, since SPICMD already exposed
+        // these same cfg_spicmd_i[31:28] bits directly and this session's
+        // spi_controller.sv fix applies to both paths uniformly. The
+        // manual RXFIFO readback returns the raw, MSB-first shift
+        // register content (no XIP-specific byte-swap).
+        begin
+          logic [31:0] rdata12;
+          localparam logic [31:0] TEST12_ADDR = 32'h00000200;
+
+          $display("=== Starting Test 12: manual command quad mode (0x6B via SPICMD) ===");
+
+          flash_model.write_mem(TEST12_ADDR + 0, 8'h55);
+          flash_model.write_mem(TEST12_ADDR + 1, 8'h66);
+          flash_model.write_mem(TEST12_ADDR + 2, 8'h77);
+          flash_model.write_mem(TEST12_ADDR + 3, 8'h88);
+
+          // SPICMD feeds ctrl_spicmd directly for manual commands (no
+          // translation, unlike XIP_CMD -> ctrl_spicmd's mux): mode bits
+          // go at cfg_spicmd_i's own native [31:30]/[29:28] positions,
+          // NOT at XIP_CMD's [9:8]/[11:10] convention.
+          axi_write(REG_SPICMD, {2'b10, 2'b00, 20'b0, 8'h6B});  // data_mode=2, addr_mode=0
+          axi_write(REG_SPIADR, TEST12_ADDR);
+          axi_write(REG_SPIDUM, 32'h00000008);
+          axi_write(REG_SPILEN, 32'h00201808);  // Data=32,Addr=24,Cmd=8
+          axi_write(REG_STATUS, 32'h00000100);  // Trigger RX (manual read)
+          wait (dut.op_done);
+          axi_write(REG_STATUS, 0);
+          axi_read(REG_RXFIFO, rdata12);
+
+          if (rdata12 === 32'h55667788)
+            $display("[TB] Test 12 (manual 0x6B quad mode via SPICMD) PASSED: %h", rdata12);
+          else
+            $display("[TB] Test 12 (manual 0x6B quad mode via SPICMD) FAILED: got %h expected 55667788",
+                      rdata12);
+        end
+
+        // Test 13: 4-beat AXI burst starting at a NON-8-byte-aligned (but
+        // still word-aligned) address. Test 10e only ever started a
+        // burst from an already-8-byte-aligned address (0x1000), and
+        // Test 10f only checked a single-beat (non-burst) read at an odd
+        // offset -- this is the one combination the alignment fix
+        // (& ~(AXI4_RDATA_WIDTH/8-1) instead of a hardcoded & ~32'h7)
+        // hadn't been exercised against yet: the FIRST beat of a burst
+        // landing on an odd offset.
+        begin
+          logic [31:0] burst13_expected[4];
+          int burst13_errors;
+          burst13_errors = 0;
+          burst13_expected[0] = 32'h43424140;
+          burst13_expected[1] = 32'h47464544;
+          burst13_expected[2] = 32'h4b4a4948;
+          burst13_expected[3] = 32'h4f4e4d4c;
+
+          $display("=== Starting Test 13: 4-beat burst from a non-8-byte-aligned start ===");
+          flash_model.write_mem(32'h0304, 8'h40);
+          flash_model.write_mem(32'h0305, 8'h41);
+          flash_model.write_mem(32'h0306, 8'h42);
+          flash_model.write_mem(32'h0307, 8'h43);
+          flash_model.write_mem(32'h0308, 8'h44);
+          flash_model.write_mem(32'h0309, 8'h45);
+          flash_model.write_mem(32'h030A, 8'h46);
+          flash_model.write_mem(32'h030B, 8'h47);
+          flash_model.write_mem(32'h030C, 8'h48);
+          flash_model.write_mem(32'h030D, 8'h49);
+          flash_model.write_mem(32'h030E, 8'h4A);
+          flash_model.write_mem(32'h030F, 8'h4B);
+          flash_model.write_mem(32'h0310, 8'h4C);
+          flash_model.write_mem(32'h0311, 8'h4D);
+          flash_model.write_mem(32'h0312, 8'h4E);
+          flash_model.write_mem(32'h0313, 8'h4F);
+
+          axi_write(REG_XIP_CMD, 32'h00000003);
+          axi_write(REG_XIP_DUM, 32'h00000000);
+          axi_write(REG_XIP_ADDRLEN, 32'h00000018);
+
+          @(posedge clk);
+          s_axi_arvalid <= 1;
+          s_axi_araddr  <= 32'h00001304;  // -> flash addr 0x304, not 8-byte aligned
+          s_axi_arid    <= 0;
+          s_axi_arlen   <= 8'd3;
+          s_axi_aruser  <= 0;
+          wait (s_axi_arready);
+          @(posedge clk);
+          s_axi_arvalid <= 0;
+          s_axi_rready  <= 1;
+          for (int beat = 0; beat <= 3; beat++) begin
+            do @(posedge clk); while (!s_axi_rvalid);
+            if (s_axi_rdata !== burst13_expected[beat]) begin
+              burst13_errors++;
+              $display("[TB] Test 13 burst beat %0d FAILED: got %h expected %h", beat, s_axi_rdata,
+                        burst13_expected[beat]);
+            end
+          end
+          s_axi_rready <= 0;
+          if (burst13_errors == 0)
+            $display("[TB] Test 13 (burst from non-8-byte-aligned start) PASSED");
+          else
+            $display("[TB] Test 13 (burst from non-8-byte-aligned start) FAILED: %0d beat error(s)",
+                      burst13_errors);
+        end
+
+        // Test 14: partial AXI write strobes. Every axi_write() call in
+        // this whole file uses wstrb=4'hF (all bytes) -- confirm the
+        // register file's own AXI4-Lite CPUIF genuinely respects byte
+        // enables, using SPIADR (a plain RW 32-bit register) as a
+        // convenient target: write a known value, then a partial write
+        // touching only byte 0, and confirm bytes 1-3 are unchanged.
+        begin
+          logic [31:0] rdata14;
+          $display("=== Starting Test 14: partial AXI write strobes ===");
+          axi_write(REG_SPIADR, 32'hAABBCCDD);
+          @(posedge clk);
+          s_axi_awvalid <= 1;
+          s_axi_awaddr  <= REG_SPIADR;
+          s_axi_awid    <= 0;
+          s_axi_awuser  <= 0;
+          s_axi_wvalid  <= 1;
+          s_axi_wdata   <= 32'h11111111;
+          s_axi_wstrb   <= 4'b0001;  // only byte 0
+          s_axi_wlast   <= 1;
+          wait (s_axi_awready && s_axi_wready);
+          @(posedge clk);
+          s_axi_awvalid <= 0;
+          s_axi_wvalid  <= 0;
+          s_axi_bready  <= 1;
+          wait (s_axi_bvalid);
+          @(posedge clk);
+          s_axi_bready <= 0;
+
+          axi_read(REG_SPIADR, rdata14);
+          if (rdata14 === 32'hAABBCC11)
+            $display("[TB] Test 14 (partial wstrb, byte 0 only) PASSED: %h", rdata14);
+          else
+            $display("[TB] Test 14 (partial wstrb, byte 0 only) FAILED: got %h expected AABBCC11",
+                      rdata14);
+        end
+
+        // Test 15: reserved/undefined I/O mode value (2'b11). Not a
+        // pass/fail check against a spec (no real opcode uses mode=3) --
+        // this documents and locks in the model's own actual behavior
+        // (spi_controller.sv's ADDR/DATA_TX/DATA_RX states only special-
+        // case 2'b10 (quad) and 2'b01 (dual); any other value, including
+        // 2'b11, falls through to the same std/single-lane path as
+        // mode=0) so a future change to this fallback is a deliberate,
+        // visible decision rather than a silent behavior change.
+        begin
+          logic [31:0] rdata15;
+          $display("=== Starting Test 15: reserved data_mode=2'b11 (documents fallback-to-std) ===");
+          flash_model.write_mem(32'h0320, 8'hA1);
+          flash_model.write_mem(32'h0321, 8'hA2);
+          flash_model.write_mem(32'h0322, 8'hA3);
+          flash_model.write_mem(32'h0323, 8'hA4);
+
+          axi_write(REG_XIP_CMD, {2'b11, 2'b00, 20'b0, 8'h03});  // reserved mode=3, cmd=0x03
+          axi_write(REG_XIP_DUM, 32'h00000000);
+          axi_write(REG_XIP_ADDRLEN, 32'h00000018);
+          axi_read(32'h00001320, rdata15);
+          if (rdata15 === 32'hA4A3A2A1)
+            $display("[TB] Test 15 (data_mode=2'b11 falls back to std, as expected) PASSED: %h",
+                      rdata15);
+          else
+            $display("[TB] Test 15 (data_mode=2'b11 fallback behavior) FAILED: got %h expected A4A3A2A1",
+                      rdata15);
+
+          // Restore default XIP config for any subsequent activity.
+          axi_write(REG_XIP_CMD, 32'h00000003);
+        end
+
+        // Test 16: XIP read via a NON-default chip select (CS1), using
+        // the new XIP_CMD/XIP_DUM features together -- confirms cs_index
+        // selection is genuinely orthogonal to the mode/dummy/addrlen
+        // fields (all prior XIP tests only ever used CS0).
+        //
+        // Flash-side address is (araddr - 0x1000) -- the SAME fixed
+        // subtraction regardless of which CS is selected, a real,
+        // deliberate, already-documented design convention (see Test 7's
+        // own "Initialize Flash 1 at correct address offset (0x2000 -
+        // 0x1000 = 0x1000)" comment above): all chip selects share one
+        // continuous flash address space offset from the fixed register/
+        // memory decode boundary at 0x1000, not per-CS-relative
+        // addressing. An earlier version of this test assumed CS1's
+        // flash address was 0-relative to its OWN base (0x2000) and
+        // "fixed" the RTL to match that wrong assumption -- which broke
+        // Test 7 above (a real regression, caught and reverted). This is
+        // corrected to use the real, existing convention instead.
+        begin
+          logic [31:0] rdata16;
+          $display("=== Starting Test 16: XIP Fast Read (0x0B) via non-default CS1 ===");
+          flash_model_1.write_mem(32'h1050, 8'hC1);
+          flash_model_1.write_mem(32'h1051, 8'hC2);
+          flash_model_1.write_mem(32'h1052, 8'hC3);
+          flash_model_1.write_mem(32'h1053, 8'hC4);
+
+          axi_write(REG_CS_A_1, 32'h00002000);
+          axi_write(REG_CS_M_1, 32'hFFFFF000);
+          axi_write(REG_CS_DEF, 32'h00000001);  // select CS1
+
+          axi_write(REG_XIP_CMD, 32'h0000000B);
+          axi_write(REG_XIP_DUM, 32'h00000008);
+          axi_write(REG_XIP_ADDRLEN, 32'h00000018);
+          axi_read(32'h00002050, rdata16);  // -> flash addr (0x2050-0x1000)=0x1050
+          if (rdata16 === 32'hC4C3C2C1)
+            $display("[TB] Test 16 (XIP 0x0B via CS1) PASSED: %h", rdata16);
+          else
+            $display("[TB] Test 16 (XIP 0x0B via CS1) FAILED: got %h expected C4C3C2C1", rdata16);
+
+          // Restore CS0 as default for cleanliness.
+          axi_write(REG_CS_DEF, 32'h00000000);
+        end
+      end
+
       $finish;
     end
   end  // End initial block

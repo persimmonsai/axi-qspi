@@ -150,11 +150,9 @@ module axi_qspi_regs (
 
 
     // AXI4-Lite Response Logic
-    struct {
-        logic is_wr;
-        logic err;
-        logic [31:0] rdata;
-    } axil_resp_buffer[2];
+    logic axil_resp_buffer_is_wr[2];
+    logic axil_resp_buffer_err[2];
+    logic [31:0] axil_resp_buffer_rdata[2];
 
     logic [1:0] axil_resp_wptr;
     logic [1:0] axil_resp_rptr;
@@ -162,9 +160,9 @@ module axi_qspi_regs (
     always_ff @(posedge clk or negedge hwif_in.rst_n) begin
         if(~hwif_in.rst_n) begin
             for(int i=0; i<2; i++) begin
-                axil_resp_buffer[i].is_wr <= '0;
-                axil_resp_buffer[i].err <= '0;
-                axil_resp_buffer[i].rdata <= '0;
+                axil_resp_buffer_is_wr[i] <= '0;
+                axil_resp_buffer_err[i] <= '0;
+                axil_resp_buffer_rdata[i] <= '0;
             end
             axil_resp_wptr <= '0;
             axil_resp_rptr <= '0;
@@ -172,13 +170,13 @@ module axi_qspi_regs (
             // Store responses in buffer until AXI response channel accepts them
             if(cpuif_rd_ack || cpuif_wr_ack) begin
                 if(cpuif_rd_ack) begin
-                    axil_resp_buffer[axil_resp_wptr[0:0]].is_wr <= '0;
-                    axil_resp_buffer[axil_resp_wptr[0:0]].err <= cpuif_rd_err;
-                    axil_resp_buffer[axil_resp_wptr[0:0]].rdata <= cpuif_rd_data;
+                    axil_resp_buffer_is_wr[axil_resp_wptr[0:0]] <= '0;
+                    axil_resp_buffer_err[axil_resp_wptr[0:0]] <= cpuif_rd_err;
+                    axil_resp_buffer_rdata[axil_resp_wptr[0:0]] <= cpuif_rd_data;
 
                 end else if(cpuif_wr_ack) begin
-                    axil_resp_buffer[axil_resp_wptr[0:0]].is_wr <= '1;
-                    axil_resp_buffer[axil_resp_wptr[0:0]].err <= cpuif_wr_err;
+                    axil_resp_buffer_is_wr[axil_resp_wptr[0:0]] <= '1;
+                    axil_resp_buffer_err[axil_resp_wptr[0:0]] <= cpuif_wr_err;
                 end
                 axil_resp_wptr <= axil_resp_wptr + 1'b1;
             end
@@ -195,7 +193,7 @@ module axi_qspi_regs (
         s_axil_bvalid = '0;
         s_axil_rvalid = '0;
         if(axil_resp_rptr != axil_resp_wptr) begin
-            if(axil_resp_buffer[axil_resp_rptr[0:0]].is_wr) begin
+            if(axil_resp_buffer_is_wr[axil_resp_rptr[0:0]]) begin
                 s_axil_bvalid = '1;
                 if(s_axil_bready) axil_resp_acked = '1;
             end else begin
@@ -204,8 +202,8 @@ module axi_qspi_regs (
             end
         end
 
-        s_axil_rdata = axil_resp_buffer[axil_resp_rptr[0:0]].rdata;
-        if(axil_resp_buffer[axil_resp_rptr[0:0]].err) begin
+        s_axil_rdata = axil_resp_buffer_rdata[axil_resp_rptr[0:0]];
+        if(axil_resp_buffer_err[axil_resp_rptr[0:0]]) begin
             s_axil_bresp = 2'b10;
             s_axil_rresp = 2'b10;
         end else begin
@@ -244,9 +242,13 @@ module axi_qspi_regs (
         logic CS_M_2;
         logic CS_A_3;
         logic CS_M_3;
+        logic XIP_CMD;
+        logic XIP_DUM;
+        logic XIP_ADDRLEN;
     } decoded_reg_strb_t;
     decoded_reg_strb_t decoded_reg_strb;
     logic decoded_err;
+    logic [6:0] decoded_addr;
     logic decoded_req;
     logic decoded_req_is_wr;
     logic [31:0] decoded_wr_data;
@@ -254,9 +256,9 @@ module axi_qspi_regs (
 
     always_comb begin
         automatic logic is_valid_addr;
-        automatic logic is_invalid_rw;
-        is_valid_addr = '1; // No error checking on valid address access
-        is_invalid_rw = '0;
+        automatic logic is_valid_rw;
+        is_valid_addr = '1; // No valid address check
+        is_valid_rw = '1; // No valid RW check
         decoded_reg_strb.STATUS = cpuif_req_masked & (cpuif_addr == 7'h0);
         decoded_reg_strb.CLKDIV = cpuif_req_masked & (cpuif_addr == 7'h4);
         decoded_reg_strb.SPICMD = cpuif_req_masked & (cpuif_addr == 7'h8);
@@ -274,10 +276,14 @@ module axi_qspi_regs (
         decoded_reg_strb.CS_M_2 = cpuif_req_masked & (cpuif_addr == 7'h3c);
         decoded_reg_strb.CS_A_3 = cpuif_req_masked & (cpuif_addr == 7'h40);
         decoded_reg_strb.CS_M_3 = cpuif_req_masked & (cpuif_addr == 7'h44);
-        decoded_err = (~is_valid_addr | is_invalid_rw) & decoded_req;
+        decoded_reg_strb.XIP_CMD = cpuif_req_masked & (cpuif_addr == 7'h48);
+        decoded_reg_strb.XIP_DUM = cpuif_req_masked & (cpuif_addr == 7'h4c);
+        decoded_reg_strb.XIP_ADDRLEN = cpuif_req_masked & (cpuif_addr == 7'h50);
+        decoded_err = '0;
     end
 
     // Pass down signals to next stage
+    assign decoded_addr = cpuif_addr;
     assign decoded_req = cpuif_req_masked;
     assign decoded_req_is_wr = cpuif_req_is_wr;
     assign decoded_wr_data = cpuif_wr_data;
@@ -399,6 +405,32 @@ module axi_qspi_regs (
                 logic load_next;
             } val;
         } CS_M_3;
+        struct {
+            struct {
+                logic [7:0] next;
+                logic load_next;
+            } cmd;
+            struct {
+                logic [1:0] next;
+                logic load_next;
+            } data_mode;
+            struct {
+                logic [1:0] next;
+                logic load_next;
+            } addr_mode;
+        } XIP_CMD;
+        struct {
+            struct {
+                logic [7:0] next;
+                logic load_next;
+            } dum;
+        } XIP_DUM;
+        struct {
+            struct {
+                logic [7:0] next;
+                logic load_next;
+            } bits;
+        } XIP_ADDRLEN;
     } field_combo_t;
     field_combo_t field_combo;
 
@@ -495,6 +527,27 @@ module axi_qspi_regs (
                 logic [31:0] value;
             } val;
         } CS_M_3;
+        struct {
+            struct {
+                logic [7:0] value;
+            } cmd;
+            struct {
+                logic [1:0] value;
+            } data_mode;
+            struct {
+                logic [1:0] value;
+            } addr_mode;
+        } XIP_CMD;
+        struct {
+            struct {
+                logic [7:0] value;
+            } dum;
+        } XIP_DUM;
+        struct {
+            struct {
+                logic [7:0] value;
+            } bits;
+        } XIP_ADDRLEN;
     } field_storage_t;
     field_storage_t field_storage;
 
@@ -654,9 +707,6 @@ module axi_qspi_regs (
         if(decoded_reg_strb.SPICMD && decoded_req_is_wr) begin // SW write
             next_c = (field_storage.SPICMD.cmd.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
             load_next_c = '1;
-            `ifdef DEBUG_QSPI_PRINT
-            $display("[REGS] SPICMD write: data=%h biten=%h t=%0t", decoded_wr_data, decoded_wr_biten, $time);
-            `endif
         end
         field_combo.SPICMD.cmd.next = next_c;
         field_combo.SPICMD.cmd.load_next = load_next_c;
@@ -680,9 +730,6 @@ module axi_qspi_regs (
         if(decoded_reg_strb.SPIADR && decoded_req_is_wr) begin // SW write
             next_c = (field_storage.SPIADR.addr.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
             load_next_c = '1;
-            `ifdef DEBUG_QSPI_PRINT
-            $display("[REGS] SPIADR write: data=%h biten=%h t=%0t", decoded_wr_data, decoded_wr_biten, $time);
-            `endif
         end
         field_combo.SPIADR.addr.next = next_c;
         field_combo.SPIADR.addr.load_next = load_next_c;
@@ -706,9 +753,6 @@ module axi_qspi_regs (
         if(decoded_reg_strb.SPILEN && decoded_req_is_wr) begin // SW write
             next_c = (field_storage.SPILEN.len.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
             load_next_c = '1;
-            `ifdef DEBUG_QSPI_PRINT
-            $display("[REGS] SPILEN write: data=%h biten=%h t=%0t", decoded_wr_data, decoded_wr_biten, $time);
-            `endif
         end
         field_combo.SPILEN.len.next = next_c;
         field_combo.SPILEN.len.load_next = load_next_c;
@@ -732,9 +776,6 @@ module axi_qspi_regs (
         if(decoded_reg_strb.SPIDUM && decoded_req_is_wr) begin // SW write
             next_c = (field_storage.SPIDUM.dum.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
             load_next_c = '1;
-            `ifdef DEBUG_QSPI_PRINT
-            $display("[REGS] SPIDUM write: data=%h biten=%h t=%0t", decoded_wr_data, decoded_wr_biten, $time);
-            `endif
         end
         field_combo.SPIDUM.dum.next = next_c;
         field_combo.SPIDUM.dum.load_next = load_next_c;
@@ -945,6 +986,121 @@ module axi_qspi_regs (
         end
     end
     assign hwif_out.CS_M_3.val.value = field_storage.CS_M_3.val.value;
+    // Field: axi_qspi_regs.XIP_CMD.cmd
+    always_comb begin
+        automatic logic [7:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.XIP_CMD.cmd.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.XIP_CMD && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.XIP_CMD.cmd.value & ~decoded_wr_biten[7:0]) | (decoded_wr_data[7:0] & decoded_wr_biten[7:0]);
+            load_next_c = '1;
+        end
+        field_combo.XIP_CMD.cmd.next = next_c;
+        field_combo.XIP_CMD.cmd.load_next = load_next_c;
+    end
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
+            field_storage.XIP_CMD.cmd.value <= 8'h3;
+        end else begin
+            if(field_combo.XIP_CMD.cmd.load_next) begin
+                field_storage.XIP_CMD.cmd.value <= field_combo.XIP_CMD.cmd.next;
+            end
+        end
+    end
+    assign hwif_out.XIP_CMD.cmd.value = field_storage.XIP_CMD.cmd.value;
+    // Field: axi_qspi_regs.XIP_CMD.data_mode
+    always_comb begin
+        automatic logic [1:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.XIP_CMD.data_mode.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.XIP_CMD && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.XIP_CMD.data_mode.value & ~decoded_wr_biten[9:8]) | (decoded_wr_data[9:8] & decoded_wr_biten[9:8]);
+            load_next_c = '1;
+        end
+        field_combo.XIP_CMD.data_mode.next = next_c;
+        field_combo.XIP_CMD.data_mode.load_next = load_next_c;
+    end
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
+            field_storage.XIP_CMD.data_mode.value <= 2'h0;
+        end else begin
+            if(field_combo.XIP_CMD.data_mode.load_next) begin
+                field_storage.XIP_CMD.data_mode.value <= field_combo.XIP_CMD.data_mode.next;
+            end
+        end
+    end
+    assign hwif_out.XIP_CMD.data_mode.value = field_storage.XIP_CMD.data_mode.value;
+    // Field: axi_qspi_regs.XIP_CMD.addr_mode
+    always_comb begin
+        automatic logic [1:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.XIP_CMD.addr_mode.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.XIP_CMD && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.XIP_CMD.addr_mode.value & ~decoded_wr_biten[11:10]) | (decoded_wr_data[11:10] & decoded_wr_biten[11:10]);
+            load_next_c = '1;
+        end
+        field_combo.XIP_CMD.addr_mode.next = next_c;
+        field_combo.XIP_CMD.addr_mode.load_next = load_next_c;
+    end
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
+            field_storage.XIP_CMD.addr_mode.value <= 2'h0;
+        end else begin
+            if(field_combo.XIP_CMD.addr_mode.load_next) begin
+                field_storage.XIP_CMD.addr_mode.value <= field_combo.XIP_CMD.addr_mode.next;
+            end
+        end
+    end
+    assign hwif_out.XIP_CMD.addr_mode.value = field_storage.XIP_CMD.addr_mode.value;
+    // Field: axi_qspi_regs.XIP_DUM.dum
+    always_comb begin
+        automatic logic [7:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.XIP_DUM.dum.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.XIP_DUM && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.XIP_DUM.dum.value & ~decoded_wr_biten[7:0]) | (decoded_wr_data[7:0] & decoded_wr_biten[7:0]);
+            load_next_c = '1;
+        end
+        field_combo.XIP_DUM.dum.next = next_c;
+        field_combo.XIP_DUM.dum.load_next = load_next_c;
+    end
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
+            field_storage.XIP_DUM.dum.value <= 8'h0;
+        end else begin
+            if(field_combo.XIP_DUM.dum.load_next) begin
+                field_storage.XIP_DUM.dum.value <= field_combo.XIP_DUM.dum.next;
+            end
+        end
+    end
+    assign hwif_out.XIP_DUM.dum.value = field_storage.XIP_DUM.dum.value;
+    // Field: axi_qspi_regs.XIP_ADDRLEN.bits
+    always_comb begin
+        automatic logic [7:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.XIP_ADDRLEN.bits.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.XIP_ADDRLEN && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.XIP_ADDRLEN.bits.value & ~decoded_wr_biten[7:0]) | (decoded_wr_data[7:0] & decoded_wr_biten[7:0]);
+            load_next_c = '1;
+        end
+        field_combo.XIP_ADDRLEN.bits.next = next_c;
+        field_combo.XIP_ADDRLEN.bits.load_next = load_next_c;
+    end
+    always_ff @(posedge clk or negedge hwif_in.rst_n) begin
+        if(~hwif_in.rst_n) begin
+            field_storage.XIP_ADDRLEN.bits.value <= 8'h18;
+        end else begin
+            if(field_combo.XIP_ADDRLEN.bits.load_next) begin
+                field_storage.XIP_ADDRLEN.bits.value <= field_combo.XIP_ADDRLEN.bits.next;
+            end
+        end
+    end
+    assign hwif_out.XIP_ADDRLEN.bits.value = field_storage.XIP_ADDRLEN.bits.value;
 
     //--------------------------------------------------------------------------
     // Write response
@@ -957,44 +1113,80 @@ module axi_qspi_regs (
     // Readback
     //--------------------------------------------------------------------------
 
+    logic [6:0] rd_mux_addr;
+    assign rd_mux_addr = decoded_addr;
+
     logic readback_err;
     logic readback_done;
     logic [31:0] readback_data;
-
-    // Assign readback values to a flattened array
-    logic [31:0] readback_array[16];
-    assign readback_array[0][15:0] = '0;
-    assign readback_array[0][19:16] = (decoded_reg_strb.STATUS && !decoded_req_is_wr) ? hwif_in.STATUS.rx_cnt.next : '0;
-    assign readback_array[0][23:20] = '0;
-    assign readback_array[0][27:24] = (decoded_reg_strb.STATUS && !decoded_req_is_wr) ? hwif_in.STATUS.tx_cnt.next : '0;
-    assign readback_array[0][31:28] = '0;
-    assign readback_array[1][7:0] = (decoded_reg_strb.CLKDIV && !decoded_req_is_wr) ? field_storage.CLKDIV.div.value : '0;
-    assign readback_array[1][8:8] = (decoded_reg_strb.CLKDIV && !decoded_req_is_wr) ? field_storage.CLKDIV.bypass.value : '0;
-    assign readback_array[1][30:9] = '0;
-    assign readback_array[1][31:31] = (decoded_reg_strb.CLKDIV && !decoded_req_is_wr) ? field_storage.CLKDIV.cpol.value : '0;
-    assign readback_array[2][31:0] = (decoded_reg_strb.SPICMD && !decoded_req_is_wr) ? field_storage.SPICMD.cmd.value : '0;
-    assign readback_array[3][31:0] = (decoded_reg_strb.SPIADR && !decoded_req_is_wr) ? field_storage.SPIADR.addr.value : '0;
-    assign readback_array[4][31:0] = (decoded_reg_strb.SPILEN && !decoded_req_is_wr) ? field_storage.SPILEN.len.value : '0;
-    assign readback_array[5][31:0] = (decoded_reg_strb.SPIDUM && !decoded_req_is_wr) ? field_storage.SPIDUM.dum.value : '0;
-    assign readback_array[6][31:0] = (decoded_reg_strb.RXFIFO && !decoded_req_is_wr) ? hwif_in.RXFIFO.data.next : '0;
-    assign readback_array[7][31:0] = (decoded_reg_strb.CS_DEF && !decoded_req_is_wr) ? field_storage.CS_DEF.cs.value : '0;
-    assign readback_array[8][31:0] = (decoded_reg_strb.CS_A_0 && !decoded_req_is_wr) ? field_storage.CS_A_0.val.value : '0;
-    assign readback_array[9][31:0] = (decoded_reg_strb.CS_M_0 && !decoded_req_is_wr) ? field_storage.CS_M_0.val.value : '0;
-    assign readback_array[10][31:0] = (decoded_reg_strb.CS_A_1 && !decoded_req_is_wr) ? field_storage.CS_A_1.val.value : '0;
-    assign readback_array[11][31:0] = (decoded_reg_strb.CS_M_1 && !decoded_req_is_wr) ? field_storage.CS_M_1.val.value : '0;
-    assign readback_array[12][31:0] = (decoded_reg_strb.CS_A_2 && !decoded_req_is_wr) ? field_storage.CS_A_2.val.value : '0;
-    assign readback_array[13][31:0] = (decoded_reg_strb.CS_M_2 && !decoded_req_is_wr) ? field_storage.CS_M_2.val.value : '0;
-    assign readback_array[14][31:0] = (decoded_reg_strb.CS_A_3 && !decoded_req_is_wr) ? field_storage.CS_A_3.val.value : '0;
-    assign readback_array[15][31:0] = (decoded_reg_strb.CS_M_3 && !decoded_req_is_wr) ? field_storage.CS_M_3.val.value : '0;
-
-    // Reduce the array
     always_comb begin
         automatic logic [31:0] readback_data_var;
+        readback_data_var = '0;
+        if(rd_mux_addr == 7'h0) begin
+            readback_data_var[19:16] = hwif_in.STATUS.rx_cnt.next;
+            readback_data_var[27:24] = hwif_in.STATUS.tx_cnt.next;
+        end
+        if(rd_mux_addr == 7'h4) begin
+            readback_data_var[7:0] = field_storage.CLKDIV.div.value;
+            readback_data_var[8] = field_storage.CLKDIV.bypass.value;
+            readback_data_var[31] = field_storage.CLKDIV.cpol.value;
+        end
+        if(rd_mux_addr == 7'h8) begin
+            readback_data_var[31:0] = field_storage.SPICMD.cmd.value;
+        end
+        if(rd_mux_addr == 7'hc) begin
+            readback_data_var[31:0] = field_storage.SPIADR.addr.value;
+        end
+        if(rd_mux_addr == 7'h10) begin
+            readback_data_var[31:0] = field_storage.SPILEN.len.value;
+        end
+        if(rd_mux_addr == 7'h14) begin
+            readback_data_var[31:0] = field_storage.SPIDUM.dum.value;
+        end
+        if(rd_mux_addr == 7'h20) begin
+            readback_data_var[31:0] = hwif_in.RXFIFO.data.next;
+        end
+        if(rd_mux_addr == 7'h24) begin
+            readback_data_var[31:0] = field_storage.CS_DEF.cs.value;
+        end
+        if(rd_mux_addr == 7'h28) begin
+            readback_data_var[31:0] = field_storage.CS_A_0.val.value;
+        end
+        if(rd_mux_addr == 7'h2c) begin
+            readback_data_var[31:0] = field_storage.CS_M_0.val.value;
+        end
+        if(rd_mux_addr == 7'h30) begin
+            readback_data_var[31:0] = field_storage.CS_A_1.val.value;
+        end
+        if(rd_mux_addr == 7'h34) begin
+            readback_data_var[31:0] = field_storage.CS_M_1.val.value;
+        end
+        if(rd_mux_addr == 7'h38) begin
+            readback_data_var[31:0] = field_storage.CS_A_2.val.value;
+        end
+        if(rd_mux_addr == 7'h3c) begin
+            readback_data_var[31:0] = field_storage.CS_M_2.val.value;
+        end
+        if(rd_mux_addr == 7'h40) begin
+            readback_data_var[31:0] = field_storage.CS_A_3.val.value;
+        end
+        if(rd_mux_addr == 7'h44) begin
+            readback_data_var[31:0] = field_storage.CS_M_3.val.value;
+        end
+        if(rd_mux_addr == 7'h48) begin
+            readback_data_var[7:0] = field_storage.XIP_CMD.cmd.value;
+            readback_data_var[9:8] = field_storage.XIP_CMD.data_mode.value;
+            readback_data_var[11:10] = field_storage.XIP_CMD.addr_mode.value;
+        end
+        if(rd_mux_addr == 7'h4c) begin
+            readback_data_var[7:0] = field_storage.XIP_DUM.dum.value;
+        end
+        if(rd_mux_addr == 7'h50) begin
+            readback_data_var[7:0] = field_storage.XIP_ADDRLEN.bits.value;
+        end
+        readback_data = readback_data_var;
         readback_done = decoded_req & ~decoded_req_is_wr;
         readback_err = '0;
-        readback_data_var = '0;
-        for(int i=0; i<16; i++) readback_data_var |= readback_array[i];
-        readback_data = readback_data_var;
     end
 
     assign cpuif_rd_ack = readback_done;
