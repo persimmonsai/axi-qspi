@@ -180,6 +180,12 @@ module tb_axi_qspi_controller_fpga_synt;
   localparam REG_XIP_CMD = 32'h48;
   localparam REG_XIP_DUM = 32'h4C;
   localparam REG_XIP_ADDRLEN = 32'h50;
+  localparam REG_SPICMD = 32'h08;
+  localparam REG_SPIADR = 32'h0C;
+  localparam REG_SPILEN = 32'h10;
+  localparam REG_SPIDUM = 32'h14;
+  localparam REG_TXFIFO = 32'h18;
+  localparam REG_RXFIFO = 32'h20;
 
   task axi_write(input [31:0] addr, input [31:0] data);
     begin
@@ -220,6 +226,77 @@ module tb_axi_qspi_controller_fpga_synt;
       @(posedge clk);
       s_axi_rready <= 0;
     end
+  endtask
+
+  // Manual-mode WRITE path (Page Program), mirrored from
+  // tb_axi_qspi_controller.sv's flash_cmd/flash_poll_wip/flash_page_program
+  // -- this is the exact path where this session's two RTL bugs lived
+  // (TXFIFO swacc/.value one-cycle timing, trigger_tx_q/trigger_rx_q
+  // latching raw inputs instead of the FSM's own latched trigger_tx_d/
+  // trigger_rx_d), and it had never been run against this specific FPGA
+  // flash model before -- the existing tests above only cover READ, and
+  // tb_spi_flash_model_fpga_synt.sv drives the model directly (bit-bang),
+  // bypassing the controller entirely.
+  task flash_cmd(input [7:0] cmd);
+    axi_write(REG_SPICMD, {24'h0, cmd});
+    axi_write(REG_SPILEN, 32'h00000008);
+    axi_write(REG_STATUS, 32'h00000100);  // Trigger RX
+    wait (dut.op_done);
+    axi_write(REG_STATUS, 0);
+  endtask
+
+  task flash_poll_wip;
+    logic [31:0] status;
+    int timeout;
+    timeout = 1000;
+    forever begin
+      axi_write(REG_SPICMD, 32'h00000005);  // RDSR
+      axi_write(REG_SPILEN, 32'h00080008);
+      axi_write(REG_STATUS, 32'h00000100);  // Trigger RX
+      wait (dut.op_done);
+      axi_write(REG_STATUS, 0);
+      axi_read(REG_RXFIFO, status);
+      if ((status & 1) == 0) break;  // WIP bit 0
+      #1000;
+      timeout--;
+      if (timeout == 0) begin
+        $fatal(1, "Timeout polling WIP");
+        break;
+      end
+    end
+  endtask
+
+  task flash_page_program(input [31:0] addr, input [31:0] data);
+    logic [31:0] rdata;
+    flash_cmd(8'h06);  // WREN
+
+    axi_write(REG_SPICMD, 32'h00000005);  // RDSR
+    axi_write(REG_SPILEN, 32'h00080008);
+    axi_write(REG_STATUS, 32'h00000100);
+    wait (dut.op_done);
+    axi_write(REG_STATUS, 0);
+    axi_read(REG_RXFIFO, rdata);
+    if ((rdata & 2) == 0) $fatal(1, "[TB] WREN Failed! WEL is 0. Status: %h", rdata);
+
+    axi_write(REG_SPICMD, 32'h00000002);  // PP
+    axi_write(REG_SPIADR, addr);
+    // Page Program has no dummy phase -- must explicitly clear SPIDUM
+    // (see the matching fix/comment in tb_axi_qspi_controller.sv's own
+    // flash_page_program(), where a stale nonzero SPIDUM leftover from an
+    // earlier Quad/Dual-read test caused the controller to insert an
+    // unwanted dummy phase before this task's DATA_TX, which the flash
+    // model then wrote to memory as a bogus extra byte). Not currently
+    // triggered by any test above (none of them touch SPIDUM), but this
+    // task shouldn't depend on that -- it already owns SPICMD/SPIADR/
+    // SPILEN itself, so it should own SPIDUM too.
+    axi_write(REG_SPIDUM, 32'h00000000);
+    axi_write(REG_TXFIFO, data);
+    axi_write(REG_SPILEN, 32'h00201808);  // Data=32,Addr=24,Cmd=8
+    axi_write(REG_STATUS, 32'h00000200);  // Trigger TX
+    wait (dut.op_done);
+    axi_write(REG_STATUS, 0);
+
+    flash_poll_wip();
   endtask
 
   initial begin
@@ -309,6 +386,31 @@ module tb_axi_qspi_controller_fpga_synt;
       s_axi_rready <= 0;
       if (burst_errors == 0) $display("[TB] 4-beat burst PASSED");
       else $display("[TB] 4-beat burst FAILED: %0d beat error(s)", burst_errors);
+    end
+
+    // --- Manual WRITE (Page Program) + memory-mapped READ-back ---
+    // TEST_ADDR must stay clear of the INIT_FILE preload footprint
+    // (bytes 0x00-0x0F) and within MEM_ADDR_WIDTH=8's 256-byte range.
+    begin
+      logic [31:0] rdata_wr;
+      localparam logic [31:0] TEST_ADDR = 32'h00000040;
+      localparam logic [31:0] TEST_DATA = 32'h11223344;
+
+      axi_write(REG_CS_DEF, 32'h00000000);
+      flash_page_program(TEST_ADDR, TEST_DATA);
+      axi_write(REG_XIP_CMD, 32'h00000003);
+      axi_write(REG_XIP_DUM, 32'h00000000);
+      axi_read(TEST_ADDR + 32'h1000, rdata_wr);
+
+      // flash_page_program() writes TEST_DATA MSB-first (flash bytes
+      // 11,22,33,44); memory-mapped AXI read returns little-endian, i.e.
+      // byte-swapped -- same convention as tb_axi_qspi_controller.sv's
+      // Test 19.
+      if (rdata_wr === 32'h44332211)
+        $display("[TB] manual WRITE (Page Program) + memory-mapped READ PASSED: %h", rdata_wr);
+      else
+        $display("[TB] manual WRITE (Page Program) + memory-mapped READ FAILED: got %h expected 44332211",
+                  rdata_wr);
     end
 
     $display("=== FPGA flash model integration test complete ===");

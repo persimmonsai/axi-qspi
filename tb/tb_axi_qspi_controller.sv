@@ -2415,6 +2415,22 @@ module tb_axi_qspi_controller;
     axi_write(REG_SPICMD, 32'h00000002);  // PP
     axi_write(REG_SPIADR, addr);  // 24-bit Addr
 
+    // Page Program has no dummy phase -- must explicitly clear SPIDUM
+    // rather than trust it's already 0. A real, confirmed bug: Test 12/
+    // 17/17b (all earlier in the regression) set SPIDUM=8 for their own
+    // Quad/Dual reads and never restored it, so by the time this task
+    // runs during Test 19, SPIDUM was still 8 -- the controller doesn't
+    // know PP has no dummy phase, it just inserts whatever SPIDUM says,
+    // and spi_flash_model.sv can't distinguish "dummy" cycles from real
+    // data during a write (a real flash chip couldn't either), so those
+    // 8 extra clock cycles landed in memory as a bogus extra byte ahead
+    // of the real data, shifting the whole write off by one address and
+    // (via the resulting malformed program) leaving the model's WIP bit
+    // stuck forever -- this is what caused flash_poll_wip() below to
+    // time out. Fixed at the point of use rather than by chasing down
+    // every earlier test that might leave SPIDUM dirty.
+    axi_write(REG_SPIDUM, 32'h00000000);
+
     // Write 32-bit data word to TX FIFO
     // Depending on fifo width. Verify controller data consumption.
     // Controller consumes `tx_fifo_data_i`.
