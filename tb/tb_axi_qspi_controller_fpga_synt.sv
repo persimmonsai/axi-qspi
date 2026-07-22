@@ -299,6 +299,28 @@ module tb_axi_qspi_controller_fpga_synt;
     flash_poll_wip();
   endtask
 
+  // Sector Erase (0x20), mirrored from tb_spi_flash_model_fpga_synt.sv's own
+  // sector_erase()/wait_not_busy() bit-bang tasks -- ported here (through
+  // the real controller's manual-command interface, not bit-banged) so
+  // this testbench alone covers everything that testbench did, allowing
+  // it to be retired. No data phase (address-only, same shape as EN4BA/
+  // WREN), so this uses "Trigger TX" (bit 9) the same way
+  // tb_axi_qspi_controller.sv's own Sector Erase section does, and clears
+  // SPIDUM defensively for the same reason flash_page_program() does.
+  task flash_sector_erase(input [31:0] addr);
+    flash_cmd(8'h06);  // WREN
+
+    axi_write(REG_SPICMD, 32'h00000020);  // Sector Erase
+    axi_write(REG_SPIADR, addr);
+    axi_write(REG_SPIDUM, 32'h00000000);
+    axi_write(REG_SPILEN, 32'h00001808);  // Addr=24,Cmd=8,Data=0
+    axi_write(REG_STATUS, 32'h00000200);  // Trigger TX
+    wait (dut.op_done);
+    axi_write(REG_STATUS, 0);
+
+    flash_poll_wip();
+  endtask
+
   initial begin
     logic [31:0] rd;
     rstn = 0;
@@ -326,6 +348,21 @@ module tb_axi_qspi_controller_fpga_synt;
     axi_write(REG_CS_DEF, 32'h00000000);
 
     $display("=== FPGA flash model integration (INIT_FILE preload) ===");
+
+    // --- RDID (0x9F), manual command -- ported from
+    // tb_spi_flash_model_fpga_synt.sv's own bit-bang RDID check ---
+    begin
+      logic [31:0] rdid;
+      axi_write(REG_SPICMD, 32'h0000009F);
+      axi_write(REG_SPILEN, 32'h00180008);  // 24 bits data (3 bytes), 0 addr, 8 bit cmd
+      axi_write(REG_SPIDUM, 32'h00000000);
+      axi_write(REG_STATUS, 32'h00000100);  // Trigger RX
+      wait (dut.op_done);
+      axi_write(REG_STATUS, 0);
+      axi_read(REG_RXFIFO, rdid);
+      if (rdid[23:0] === 24'hEF4018) $display("[TB] RDID PASSED: %h", rdid[23:0]);
+      else $display("[TB] RDID FAILED: got %h expected ef4018", rdid[23:0]);
+    end
 
     // --- Standard Read (0x03), default XIP config ---
     axi_write(REG_XIP_CMD, 32'h00000003);
@@ -411,6 +448,23 @@ module tb_axi_qspi_controller_fpga_synt;
       else
         $display("[TB] manual WRITE (Page Program) + memory-mapped READ FAILED: got %h expected 44332211",
                   rdata_wr);
+    end
+
+    // --- Sector Erase (0x20) + verify erased region reads 0xFF -- ported
+    // from tb_spi_flash_model_fpga_synt.sv's own bit-bang sector_erase()
+    // test. Placed LAST: with MEM_ADDR_WIDTH=8 (256B), the model's own
+    // SECTOR_ERASE_COUNT clamps to the whole memory depth, so this erases
+    // everything else this testbench relied on above.
+    begin
+      logic [31:0] rd_erased;
+      flash_sector_erase(32'h00000040);
+      axi_write(REG_XIP_CMD, 32'h00000003);
+      axi_write(REG_XIP_DUM, 32'h00000000);
+      axi_read(32'h00001040, rd_erased);
+      if (rd_erased === 32'hFFFFFFFF)
+        $display("[TB] Sector Erase + read-back PASSED: %h", rd_erased);
+      else
+        $display("[TB] Sector Erase + read-back FAILED: got %h expected ffffffff", rd_erased);
     end
 
     $display("=== FPGA flash model integration test complete ===");

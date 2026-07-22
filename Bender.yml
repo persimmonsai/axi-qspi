@@ -28,3 +28,46 @@ sources:
       - tb/tb_axi_qspi_controller.sv
       #- tb/spi.v
 
+  # FPGA-synthesizable flash model (Vivado xpm_memory_spram-based), used as
+  # the real on-FPGA SPI/QSPI flash target -- see the README's "FPGA Flash
+  # Emulation Model" section. Distinct from src/spi_flash_model.sv above
+  # (a plain behavioral/associative-array model, ASIC/verilator-only).
+  # Gated on the monorepo's existing `fpga` target (combined with
+  # `simulation`) rather than a bespoke target name, matching how
+  # test_rv64/Makefile and fpga_syn/Makefile already invoke Xcelium with
+  # `-t simulation -t fpga` together whenever this model is needed --
+  # currently those two Makefiles still reference this file via a
+  # hardcoded `deps/axi_qspi/src/...` path rather than through Bender, but
+  # exposing it here keeps Bender's own file list consistent/complete for
+  # any consumer that does go through Bender.
+  - target: all(simulation,fpga)
+    files:
+      - src/spi_flash_model_fpga_synt.sv
+
+  - target: all(simulation,fpga,test)
+    files:
+      # Integration test: axi_qspi_controller.sv driven against the real
+      # FPGA flash model via AXI (RDID, Standard/Fast/Quad reads, burst,
+      # manual Page Program + memory-mapped read-back, and Sector Erase).
+      # The standalone bit-bang test that used to cover this same model
+      # directly (no controller in the loop) was retired once every one of
+      # its checks was ported into this testbench, to keep only one FPGA-
+      # model testbench to maintain.
+      - tb/tb_axi_qspi_controller_fpga_synt.sv
+
+  # Infineon/Cypress's real S25HS01GT behavioral model (downloaded to
+  # vendor/s25hs01gtRel/), used by tb_axi_qspi_controller_s25hs01gt.sv for
+  # protocol-compatibility verification against real vendor RTL instead of
+  # this package's own simplified spi_flash_model.sv. Gated behind its own
+  # `flash_s25hs01gt` target (combined with `simulation`) rather than
+  # folded into the plain `simulation`/`test` targets above, since this is
+  # a large (~17k line) third-party file that most integrators building
+  # against this package don't need pulled in by default.
+  - target: all(simulation,flash_s25hs01gt)
+    files:
+      - vendor/s25hs01gtRel/src/s25hs01gt.sv
+
+  - target: all(simulation,test,flash_s25hs01gt)
+    files:
+      - tb/tb_axi_qspi_controller_s25hs01gt.sv
+
