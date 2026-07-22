@@ -407,7 +407,25 @@ module axi_qspi_controller #(
   assign trig_tx = hwif_out.STATUS.trig_tx.value;
   assign sw_rst = hwif_out.STATUS.sw_rst.value;
 
-  assign tx_push = hwif_out.TXFIFO.data.swacc;
+  // TXFIFO.data.swacc (software-write strobe) is COMBINATIONAL, asserted
+  // the SAME cycle as the AXI write; TXFIFO.data.value is REGISTERED
+  // (axi_qspi_regs.sv's own generated field_storage flop), updating to
+  // the new value only the FOLLOWING cycle. Feeding swacc directly into
+  // spi_controller's tx_fifo_push_i (as this code previously did) samples
+  // tx_data ONE CYCLE TOO EARLY -- the FIFO pushes whatever value was
+  // already in the register before this write, not the just-written
+  // data. Confirmed via a real end-to-end failure (spi_flash_model
+  // received X during a Page Program, since TXFIFO's very first-ever
+  // write landed before .value had ever been driven to a non-X value;
+  // any later write would have silently pushed the PREVIOUS word
+  // instead, one push late). Fixed by registering the push strobe one
+  // cycle so it lines up with .value's own one-cycle-delayed update.
+  logic tx_push_q;
+  always_ff @(posedge s_axi_aclk or negedge s_axi_aresetn) begin
+    if (!s_axi_aresetn) tx_push_q <= 1'b0;
+    else tx_push_q <= hwif_out.TXFIFO.data.swacc;
+  end
+  assign tx_push = tx_push_q;
   assign tx_data = {{(AXI4_RDATA_WIDTH - 32) {1'b0}}, hwif_out.TXFIFO.data.value};  // Zero extend
   assign rx_pop = hwif_out.RXFIFO.data.swacc | mem_pop;
 

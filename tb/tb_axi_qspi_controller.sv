@@ -1852,6 +1852,58 @@ module tb_axi_qspi_controller;
           axi_write(REG_XIP_DUM, 32'h00000000);
           axi_write(REG_XIP_ADDRLEN, 32'h00000018);
         end
+
+        // Test 19: manual WRITE (Page Program via TXFIFO) + memory-mapped
+        // READ -- a real regression guard for a genuine, previously-
+        // undiscovered RTL bug: axi_qspi_controller.sv fed TXFIFO.data's
+        // combinational `swacc` write-strobe directly into spi_controller's
+        // tx_fifo_push_i, one cycle BEFORE TXFIFO.data.value (a registered
+        // field) actually updated to the just-written data -- the FIFO
+        // pushed whichever STALE value happened to be there beforehand,
+        // not the intended write data. This went uncaught because the only
+        // existing test that ever exercised a manual write
+        // (verify_random_access, via this same flash_page_program() task)
+        // has been permanently wrapped in `if (0) begin // Disable Test 10
+        // for now` this whole time -- i.e. genuinely never run. Confirmed
+        // for real via anc-adapter's own full-chip QSPI test app (the
+        // flash model received literal X during a Page Program). Fixed by
+        // registering the push strobe one cycle so it aligns with
+        // .value's own one-cycle-delayed update.
+        //
+        // KNOWN SEPARATE OPEN ISSUE (NOT fixed here, still failing): the TX
+        // FIFO's tx_count/tx_wr_ptr already show a leftover, undrained
+        // entry (tx_count=1) immediately after the auto-init sequence
+        // (fetch_en path), before ANY manual command ever touches TXFIFO --
+        // confirmed via direct hierarchical probing. A `sw_rst` before this
+        // test was tried as a workaround and did NOT resolve it (flash_
+        // poll_wip still times out with WIP stuck at 1 forever) -- sw_rst_i
+        // only resets spi_controller's state_q to IDLE, it does NOT clear
+        // shift_reg_q/bit_cnt_q/tx_count, so it cannot be the real fix.
+        // This is a genuinely separate, still-unresolved bug from the one
+        // fixed above (that fix is independently verified correct via
+        // direct tx_data tracing, see the CTRL-TXDBG evidence in this
+        // session's own investigation) -- root cause not yet found; needs
+        // dedicated follow-up. Test left enabled (not `if(0)`-disabled) so
+        // its current FAILING status stays visible rather than hidden.
+        begin
+          logic [31:0] rdata19;
+          localparam logic [31:0] TEST19_ADDR = 32'h00000800;
+          localparam logic [31:0] TEST19_DATA = 32'h11223344;
+
+          $display("=== Starting Test 19: manual WRITE (Page Program) + memory-mapped READ ===");
+          axi_write(REG_CS_DEF, 32'h00000000);
+          flash_page_program(TEST19_ADDR, TEST19_DATA);
+          axi_read(TEST19_ADDR + 32'h1000, rdata19);
+
+          // flash_page_program() writes TEST19_DATA MSB-first (flash bytes
+          // 11,22,33,44); memory-mapped AXI read returns little-endian
+          // (see verify_random_access's own comment), i.e. byte-swapped.
+          if (rdata19 === 32'h44332211)
+            $display("[TB] Test 19 (manual WRITE + memory-mapped READ) PASSED: %h", rdata19);
+          else
+            $display("[TB] Test 19 (manual WRITE + memory-mapped READ) FAILED: got %h expected 44332211",
+                      rdata19);
+        end
       end
 
       $finish;

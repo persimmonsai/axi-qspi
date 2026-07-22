@@ -1,0 +1,196 @@
+##########################################
+Date (DD/MM/YYYY)  - 23/07/2018
+
+Model name         - S25HS01GT
+
+Vendor             - Cypress Semiconductor Corporation
+
+Publication ID     -  002-12345_REV_I.pdf Issue date May 03,2018
+
+VITAL model author -  Branko Barac
+                      b-barac@hdl-dh.com
+##########################################
+##########################################
+# Release Label             => vital-amd-REL-s25hs01gt-2018-07-24-1.tar.gz
+# Release Date (DD/MM/YYYY) => 24/07/2018
+# Release Version           => 1.0
+
+##########################################
+
+## initial release
+
+##########################################
+##########################################
+# Release Label             => vital-amd-REL-s25hs01gt-2018-10-05-1.tar.gz
+# Release Date (DD/MM/YYYY) => 05/10/2018
+# Release Version           => 1.1
+
+##########################################
+
+# Corrections:
+- fixed minor errors in sfdp and updated headers
+
+# Files modified
+s25hs01gt.v
+s25hs01gt.sv
+s25hs01gt.vhd
+testbench_s25hs01gt_verilog.vhd
+testbench_s25hs01gt_vhdl.vhd
+##########################################
+VITAL model author -  Maja Krneta
+                      m-krneta@hdl-dh.com
+##########################################
+# Release Label             => vital-amd-REL-s25hs01gt-2019-02-14-2.tar.gz
+# Release Date (DD/MM/YYYY) => 14/02/2019
+# Release Version           => 1.2
+
+##########################################
+
+## Updated according rev *L 
+## Changed files
+-- s25hs01gt.v
+-- s25hs01gt.sv
+-- s25hs01gt.vhd
+-- s25hs01gt_verilog.sdf
+-- s25hs01gt_vhdl.sdf
+-- s25hs01gt.ftmv
+-- s25hs01gt.ftm
+-- testbench_s25hs01gt_vhdl.vhd
+-- testbench_s25hs01gt_verilog.vhd
+-- spansion_tc_pkg.vhd
+
+##########################################
+##########################################
+VITAL model author -  Branko Barac
+                      b-barac@hdl-dh.com
+##########################################
+
+# Release Label             => vital-amd-REL-s25hs01gt-2019-03-11-1.tar.gz
+# Release Date (DD/MM/YYYY) => 03/11/2019
+# Release Version           => 1.3
+
+##########################################
+## Bug39.1 fixed Page Program  of 256 Bytes (data was slipped by 1 Byte)
+## Bug39.2 fixed (ignore upper bits for a
+## all commands when given address is
+## larger then acrual device max adderss )
+
+## Changed files
+-- s25hs01gt.v
+-- s25hs01gt.sv
+-- s25hs01gt.vhd
+-- spansion_tc_pkg.vhd
+
+##########################################
+##########################################
+VITAL model author -  Maja Krneta
+                      m-krneta@hdl-dh.com
+##########################################
+
+# Release Label             => vital-amd-REL-s25hs01gt-2019-08-16-1.tar.gz
+# Release Date (DD/MM/YYYY) => 16/08/2019
+# Release Version           => 1.4
+
+##########################################
+## Update rev *R
+
+-- s25hs01gt.v
+-- s25hs01gt.sv
+-- s25hs01gt.vhd
+-- s25hs01gt_verilog.sdf
+-- s25hs01gt_vhdl.sdf
+-- s25hs01gt.ftmv
+-- s25hs01gt.ftm
+-- testbench_s25hs01gt_vhdl.vhd
+-- testbench_s25hs01gt_verilog.vhd
+
+##########################################
+##########################################
+VITAL model author -  Maja Krneta
+                      m-krneta@hdl-dh.com
+##########################################
+# Release Label             => vital-amd-REL-s25hs01gt-2019-12-13-1.tar.gz
+# Release Date (DD/MM/YYYY) => 13/12/2019
+# Release Version           => 1.5
+
+##########################################
+## Bit-walking bug fixed
+## Changed files
+-- s25hs01gt.v
+-- s25hs01gt.sv
+-- s25hs01gt.vhd
+-- testbench_s25hs01gt_vhdl.vhd
+-- testbench_s25hs01gt_verilog.vhd
+-- spansion_tc_pkg.vhd
+-- model_release_history.txt
+##########################################
+##########################################
+VITAL model author -  Maja Krneta
+                      m-krneta@hdl-dh.com
+##########################################
+# Release Label             => vital-amd-REL-s25hs01gt-2020-06-15-1.tar.gz
+# Release Date (DD/MM/YYYY) => 15/06/2020
+# Release Version           => 1.6
+
+##########################################
+## Bug50 fixed
+## Changed files
+-- s25hs01gt.v
+-- s25hs01gt.sv
+-- s25hs01gt.vhd
+-- spansion_tc_pkg.vhd
+##########################################
+##########################################
+VITAL model author -  Stevan Stevanovic
+                      s-stevanovic@hdl-dh.com
+##########################################
+# Release Label             => vital-amd-REL-s25hs01gt-2020-10-03-1.tar.gz
+# Release Date (DD/MM/YYYY) => 03/10/2020
+# Release Version           => 1.7
+
+##########################################
+## New SFDP to according to X version
+## Revised: April 22, 2020
+## Changed files
+-- s25hs01gt.v
+-- s25hs01gt.sv
+-- spansion_tc_pkg.vhd
+-- testbench_s25hs01gt_verilog.vhd
+##########################################
+##########################################
+## Data Sheet Update:SFDP, QUAD_IT etc.
+## Revised: Mar 04, 2021
+## Release Version           => 1.8
+## Changed files
+-- s25hs01gt.sv
+##########################################
+##########################################
+## Revised: Apr 11, 2022
+## Release Version           => 1.9
+## Changed files
+-- s25hs01gt.sv
+-- testbench_s25hs01gt_verilog.vhdl
+-- spansion_tc_pkg.vhd
+##########################################
+##########################################
+## Update SFDP, RESETNeg pin, Volatile Read latency, CFR3V access
+## Revised: Apr 29, 2022
+## Release Version           => 1.10
+## Changed files
+-- s25hs01gt.sv
+##########################################
+##########################################
+## Update on CS# signaling reset
+## Revised: May 18, 2022
+## Release Version           => 1.11
+#Files changed
+-s25hs01gt.v
+-testbench_s25hs01gt_verilog.vhd
+##########################################
+##########################################
+## Density update
+## Revised: Aug 24, 2022
+## Release Version           => 1.12
+#Files changed
+-s25hs01gt.v
+##########################################

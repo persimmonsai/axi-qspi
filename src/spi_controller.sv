@@ -886,13 +886,30 @@ module spi_controller #(
   end
 
   // Trigger Latching // Sync
+  //
+  // Registers the MAIN FSM's own trigger_tx_d/trigger_rx_d (computed
+  // throughout the case statement above: latched to trigger_tx_i/
+  // trigger_rx_i when a new transaction starts in IDLE, HELD via the
+  // default trigger_tx_d=trigger_tx_q at the top of that always_comb
+  // block through every subsequent state, cleared in FINISH) -- NOT a
+  // raw, unlatched trigger_tx_i/trigger_rx_i directly. trig_tx/trig_rx
+  // are hardware `singlepulse` fields (high for exactly one cycle), so
+  // registering the raw input here (as this code previously did) made
+  // trigger_tx_q/trigger_rx_q ALSO only live for ~1 cycle -- nowhere near
+  // long enough to survive the CMD phase's own 8 bit-times. Every
+  // `if (trigger_tx_q) DATA_TX else DATA_RX` decision later in the
+  // transaction would then always see trigger_tx_q=0 and fall through to
+  // DATA_RX, regardless of which trigger was actually requested. A real,
+  // confirmed bug: every manual WRITE silently executed as a READ instead
+  // (driving nothing onto the bus), invisible until a test actually
+  // checked the transferred data rather than just "did it complete".
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       trigger_rx_q <= '0;
       trigger_tx_q <= '0;
     end else begin
-      trigger_rx_q <= trigger_rx_i;
-      trigger_tx_q <= trigger_tx_i;
+      trigger_rx_q <= trigger_rx_d;
+      trigger_tx_q <= trigger_tx_d;
     end
   end
 

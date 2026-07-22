@@ -1,0 +1,279 @@
+<!DOCTYPE FTML SYSTEM "ftml.dtd">
+<FTML><HEAD><TITLE>FMF Timing for s25hs01gt Parts</TITLE></HEAD>
+<BODY>
+<REVISION.HISTORY>
+version: |  author:     |  mod date: |  changes made:
+  V2.0        B.Barac       18 July 23          Inital Release
+  V2.1        M.Krneta      19 February 14      Rev *L update
+  v2.2        M.Krneta      19 August 16        Rev *R update
+</REVISION.HISTORY>
+<TIMESCALE>1ns</TIMESCALE>
+<MODEL>s25hs01gt</MODEL>
+<FMFTIME>
+S25HS01GTDSBHI030_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSBHV033_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSBHI033_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSBHV030_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHI010_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHV010_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHI011_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHV011_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHI013_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHV013_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHI030_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHV030_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHI033_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHV033_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHI010_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHV010_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHI011_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHV011_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHI013_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHV013_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSBHA030_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSBHB030_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSBHM030_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSBHA033_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSBHB033_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSBHM033_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHA010_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHB010_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHM010_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHA011_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHB011_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHM011_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHA013_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHB013_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHM013_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHA030_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHB030_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHM030_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHA033_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHB033_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHM033_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHA010_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHB010_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHM010_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHA011_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHB011_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHM011_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHA013_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHB013_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHM013_30pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+<COMMENT>The values listed are for VCC=1.7V to 2.0V, CL=30pF,
+Industrial Ta=-40 to +85 Celsius</COMMENT>
+<TIMING>
+(DELAY (ABSOLUTE
+    (IOPATH SCK SO (2:5.1:8) (2:5.1:8) () (2:5.1:8) () (2:5.1:8))
+    (COND  (ddr) (IOPATH SCK SO (2:5.1:8) (2:5.1:8) () (2:5.1:8) () (2:5.1:8)))
+    (COND rst_quad==1'b0 (IOPATH CSNeg SO   () () (1.5:4:8) () (1.5:4:8) ()))
+    (COND rst_quad==1'b1 (IOPATH CSNeg SO   () () (12:16:20)  () (12:16:20)  ()))
+  ))
+(TIMINGCHECK
+    (SETUP (COND  ddr_F51M CSNeg) (posedge SCK) (4))
+    (SETUP (COND  Negddr_F51M CSNeg) (posedge SCK) (5))
+
+    (SETUP (COND  Negddr_F51M     SI) (posedge SCK) (2))
+    (SETUP (COND  Negddr_NegF51M  SI) (posedge SCK) (5))
+    (SETUP (COND  double          SI) (posedge SCK) (2))
+    (SETUP (COND  double          SI) (negedge SCK) (2))
+    
+    (SETUP WPNeg CSNeg (20))
+    (SETUP RESETNeg CSNeg (50))
+    
+    
+    (HOLD (COND  Negddr_F51M     SI) (posedge SCK) (2))
+    (HOLD (COND  Negddr_NegF51M  SI) (posedge SCK) (5))
+    (HOLD (COND  double          SI) (posedge SCK) (1.2))
+    (HOLD (COND  double          SI) (negedge SCK) (1.2))
+    
+    (HOLD CSNeg (negedge SCK) (5))
+    (HOLD (COND ~ddr CSNeg) (posedge SCK) (6))
+    (HOLD WPNeg  CSNeg (20))
+    (HOLD CSNeg  RESETNeg (50))
+    (HOLD CSNeg  IO3RESETNeg (50))
+    
+    
+
+    (WIDTH  (COND  normal_rd  SCK) (10))
+    (WIDTH  (COND  fast_rd    SCK) (3.01))
+    (WIDTH  (COND  fast_rd1    SCK) (3.76))
+    (WIDTH  (COND  ddr_rd     SCK) (4.9))
+    (WIDTH  (posedge CSNeg) (10))
+    (WIDTH  (COND  rst_quad  (posedge CSNeg)) (20))
+    (WIDTH  (COND  RDYBSY       (posedge CSNeg)) (50))
+    (WIDTH  (negedge RESETNeg)   (200))
+    (WIDTH  (posedge RESETNeg)   (50))
+    (WIDTH  (negedge IO3RESETNeg)   (200))
+    (WIDTH  (posedge IO3RESETNeg)   (50))
+
+    (PERIOD (COND normal_rd SCK) (20))
+    (PERIOD (COND fast_rd SCK) (6.02))
+    (PERIOD (COND fast_rd1 SCK) (7.52))
+    (PERIOD (COND ddr_rd SCK) (9.8))
+))
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/WRR) (DELAY (ABSOLUTE (DEVICE(44e6:44e6:357.5e6) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/PP_256) (DELAY (ABSOLUTE (DEVICE(480e3:480e3:1700e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/PP_512) (DELAY (ABSOLUTE (DEVICE(570e3:570e3:1700e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/SE4) (DELAY (ABSOLUTE (DEVICE(42e6:42e6:335e6) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/SE256) (DELAY (ABSOLUTE (DEVICE(773e6:773e6:2677e6) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/BE) (DELAY (ABSOLUTE (DEVICE(398e9:398e9:1381e9) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/EES) (DELAY (ABSOLUTE(DEVICE(20e3:20e3:50e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/PSUSP) (DELAY (ABSOLUTE (DEVICE(50e3:50e3:60e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/ESUSP) (DELAY (ABSOLUTE (DEVICE(50e3:50e3:60e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/RPH) (DELAY (ABSOLUTE (DEVICE(300e3:300e3:450e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/PU) (DELAY (ABSOLUTE (DEVICE(300e3:300e3:450e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+   (INSTANCE dut/DICSL) (DELAY (ABSOLUTE (DEVICE(50e3:50e3:60e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+   (INSTANCE dut/DICRL) (DELAY (ABSOLUTE (DEVICE(100e3:100e3:100e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/DPD ) (DELAY (ABSOLUTE (DEVICE(3e3:3e3:3e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/CS) (DELAY (ABSOLUTE (DEVICE(50:50:50) ) ) )
+</TIMING></FMFTIME>
+</BODY></FTML>
+<FMFTIME>
+S25HS01GTDSBHI030_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSBHV033_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSBHI033_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSBHV030_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHI010_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHV010_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHI011_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHV011_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHI013_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHV013_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHI030_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHV030_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHI033_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHV033_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHI010_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHV010_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHI011_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHV011_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHI013_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHV013_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSBHA030_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSBHB030_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSBHM030_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSBHA033_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSBHB033_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSBHM033_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHA010_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHB010_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHM010_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHA011_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHB011_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHM011_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHA013_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHB013_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTDSMHM013_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHA030_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHB030_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHM030_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHA033_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHB033_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFABHM033_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHA010_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHB010_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHM010_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHA011_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHB011_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHM011_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHA013_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHB013_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+S25HS01GTFAMHM013_15pF <SOURCE> Cypress Semiconductor Corporation, Document Number: 002-12345 Rev. *H Issue date March 28, 2018 </SOURCE>
+<COMMENT>The values listed are for regulated Vcc range VCC=1.7V to 2.0V, CL=15pF,
+Industrial Ta=-40 to +85 Celsius</COMMENT>
+<TIMING>
+(DELAY (ABSOLUTE
+    (IOPATH SCK SO (2:5.1:6) (2:5.1:6) (1) (2:5.1:6) (1) (2:5.1:6))
+    (COND  (ddr) (IOPATH SCK SO (2:5.1:6) (2:5.1:6) (1) (2:5.1:6) (1) (2:5.1:6)))
+    (COND rst_quad==1'b0 (IOPATH CSNeg SO   () () (1.5:4:8) () (1.5:4:8) ()))
+    (COND rst_quad==1'b1 (IOPATH CSNeg SO   () () (12:16:20)  () (12:16:20)  ()))
+  ))
+(TIMINGCHECK
+    (SETUP (COND  ddr_F51M     CSNeg) (posedge SCK) (4))
+    (SETUP (COND  Negddr_F51M  CSNeg) (posedge SCK) (5))
+
+    (SETUP (COND  Negddr_F51M     SI) (posedge SCK) (2))
+    (SETUP (COND  Negddr_NegF51M  SI) (posedge SCK) (5))
+    (SETUP (COND  double          SI) (posedge SCK) (2))
+    (SETUP (COND  double          SI) (negedge SCK) (2))
+    
+    (SETUP WPNeg CSNeg (20))
+    (SETUP RESETNeg CSNeg (50))
+    
+    
+    (HOLD (COND  Negddr_F51M     SI) (posedge SCK) (2))
+    (HOLD (COND  Negddr_NegF51M  SI) (posedge SCK) (5))
+    (HOLD (COND  double          SI) (posedge SCK) (1.2))
+    (HOLD (COND  double          SI) (negedge SCK) (1.2))
+    
+    (HOLD CSNeg (negedge SCK) (5))
+    (HOLD (COND ~ddr CSNeg) (posedge SCK) (6))
+    (HOLD WPNeg  CSNeg (20))
+    (HOLD CSNeg  RESETNeg (50))
+    (HOLD CSNeg  IO3RESETNeg (50))
+
+    (WIDTH  (COND  normal_rd  SCK) (10))
+    (WIDTH  (COND  fast_rd    SCK) (3.01))
+    (WIDTH  (COND  fast_rd1    SCK) (3.76))
+    (WIDTH  (COND  ddr_rd     SCK) (4.9))
+    (WIDTH  (posedge CSNeg) (10))
+    (WIDTH  (COND  rst_quad  (posedge CSNeg)) (20))
+    (WIDTH  (COND  RDYBSY       (posedge CSNeg)) (50))
+    (WIDTH  (negedge RESETNeg)   (200))
+    (WIDTH  (posedge RESETNeg)   (50))
+    (WIDTH  (negedge IO3RESETNeg)   (200))
+    (WIDTH  (posedge IO3RESETNeg)   (50))
+
+    (PERIOD (COND normal_rd SCK) (20))
+    (PERIOD (COND fast_rd SCK) (6.02))
+    (PERIOD (COND fast_rd1 SCK) (7.52))
+    (PERIOD (COND ddr_rd SCK) (9.8))
+))
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/WRR) (DELAY (ABSOLUTE (DEVICE(44e6:44e6:357.5e6) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/PP_256) (DELAY (ABSOLUTE (DEVICE(480e3:480e3:1700e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/PP_512) (DELAY (ABSOLUTE (DEVICE(570e3:570e3:1700e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/SE4) (DELAY (ABSOLUTE (DEVICE(42e6:42e6:335e6) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/SE256) (DELAY (ABSOLUTE (DEVICE(773e6:773e6:2677e6) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/BE) (DELAY (ABSOLUTE (DEVICE(398e9:398e9:1381e9) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/EES) (DELAY (ABSOLUTE(DEVICE(20e3:20e3:50e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/PSUSP) (DELAY (ABSOLUTE (DEVICE(50e3:50e3:60e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/ESUSP) (DELAY (ABSOLUTE (DEVICE(50e3:50e3:60e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/RPH) (DELAY (ABSOLUTE (DEVICE(300e3:300e3:450e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/PU) (DELAY (ABSOLUTE (DEVICE(300e3:300e3:450e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+   (INSTANCE dut/DICSL) (DELAY (ABSOLUTE (DEVICE(50e3:50e3:60e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+   (INSTANCE dut/DICRL) (DELAY (ABSOLUTE (DEVICE(100e3:100e3:100e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/DPD ) (DELAY (ABSOLUTE (DEVICE(3e3:3e3:3e3) ) ) ) )
+  (CELL (CELLTYPE "VITALbuf")
+    (INSTANCE dut/CS) (DELAY (ABSOLUTE (DEVICE(50:50:50) ) ) )
+</TIMING></FMFTIME>
+</BODY></FTML>

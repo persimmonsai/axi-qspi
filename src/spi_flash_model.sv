@@ -271,6 +271,20 @@ module spi_flash_model (
                       current_mode <= MODE_QUAD;
                     end
 
+                    // Release from Deep Power-Down / Read Electronic
+                    // Signature (0xAB): near-universal across SPI NOR
+                    // vendors, real protocol is 3 dummy address bytes then
+                    // 1 (legacy, largely unused today) ID byte -- reuse
+                    // the generic ST_ADDR accumulator for the dummy bytes
+                    // (its value is discarded, see the ADDR-complete case
+                    // below) so a defensive bootrom wake-up command
+                    // completes cleanly instead of falling to `default`
+                    // and desyncing the model's own CMD framing.
+                    8'hAB: begin
+                      $display("[SPI_MODEL] CMD Received: AB (Release Power-Down)");
+                      state <= ST_ADDR;
+                    end
+
                     8'h9F: begin  // RDID
                       $display("[SPI_MODEL] CMD Received: 9F (RDID)");
                       state <= ST_DATA_TX;

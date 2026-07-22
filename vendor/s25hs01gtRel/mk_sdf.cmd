@@ -1,0 +1,9 @@
+SET sdffile_suffix .sdf
+SET use_global_timing_dir true
+SET timingfile_dir /media/munden/extdrv1/home/fmf/models/hdl_design/AMD/s25hs01gt/src
+SET timingfile_suffix .ftm
+SET time_scale 1ns
+SET modelfile_dir /media/munden/extdrv1/home/fmf/models/hdl_design/AMD/s25hs01gt/src
+SET diagnostics on
+SET vhdl_file testbench_s25hs01gt_vhdl.vhd
+SET vendor modeltech
