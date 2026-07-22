@@ -8,7 +8,6 @@ deps/
 *.key
 *.err
 *_log.txt
-*.mem
 sw/include/
 doc/rdl/
 
