@@ -416,11 +416,35 @@ module spi_flash_model_fpga_synt #(
       .MEMORY_INIT_FILE   ((INIT_FILE != "") ? INIT_FILE : "none"),
       .MEMORY_INIT_PARAM  ("0"),
       .MEMORY_OPTIMIZATION("true"),
+`ifdef QSPI_MODEL_URAM
+      // URAM mode (2026-09-25). At large MEM_ADDR_WIDTH the distributed-RAM
+      // default is no longer viable: a 2 MiB (MEM_ADDR_WIDTH=21) model builds
+      // ~876k primitive cells / 5.5M pins of LUTRAM plus a 2M-deep read mux,
+      // which dominates place-and-route. As URAM the same 2 MiB is ~57-512
+      // URAM288 tiles. The original "distributed, so reads are combinational"
+      // rationale below still holds -- it is simply unaffordable at this size.
+      //
+      // COST, and it is a real capability loss: URAM cannot do READ_LATENCY_A=0
+      // (Xilinx DRC forbids it for block/ultra), so this mode CANNOT serve the
+      // zero-dummy 0x03/0x13 Standard Read. Every dummy-cycle tier works
+      // (0x0B Fast Read, 0x6B Quad) -- verified by tb_axi_qspi_controller_
+      // fpga_synt.sv, which guards its own zero-dummy cases on this same define.
+      // The FPGA boot path is unaffected: anc-adapter/sw/bootrom qspi_init()
+      // selects 0x0B/8-dummy for JEDEC ef4018, which is what this model reports.
+      // INIT_FILE must also cover the FULL MEM_DEPTH here -- distributed RAM
+      // tolerates uninitialised locations, URAM returns X.
+      .MEMORY_PRIMITIVE   ("ultra"),
+`else
       .MEMORY_PRIMITIVE   ("distributed"),
+`endif
       .MEMORY_SIZE        (MEM_DEPTH * 8),
       .MESSAGE_CONTROL    (0),
       .READ_DATA_WIDTH_A  (8),
+`ifdef QSPI_MODEL_URAM
+      .READ_LATENCY_A     (1),
+`else
       .READ_LATENCY_A     (0),
+`endif
       .READ_RESET_VALUE_A ("0"),
       .USE_MEM_INIT       (1),
       .WAKEUP_TIME        ("disable_sleep"),

@@ -365,8 +365,15 @@ module tb_axi_qspi_controller_fpga_synt;
     end
 
     // --- Standard Read (0x03), default XIP config ---
+`ifdef QSPI_MODEL_URAM
+    // URAM mode cannot serve zero-dummy reads (READ_LATENCY_A=1); exercise the
+    // same Standard-Read opcode with the 8-dummy tier the FPGA bootrom selects.
+    axi_write(REG_XIP_CMD, 32'h0000000B);
+    axi_write(REG_XIP_DUM, 32'h00000008);
+`else
     axi_write(REG_XIP_CMD, 32'h00000003);
     axi_write(REG_XIP_DUM, 32'h00000000);
+`endif
     axi_write(REG_XIP_ADDRLEN, 32'h00000018);
     axi_read(32'h00001000, rd);
     if (rd === 32'h03020100) $display("[TB] 0x03 read PASSED: %h", rd);
@@ -386,9 +393,14 @@ module tb_axi_qspi_controller_fpga_synt;
     if (rd === 32'h23222120) $display("[TB] 0x6B read PASSED: %h", rd);
     else $display("[TB] 0x6B read FAILED: got %h expected 23222120", rd);
 
-    // --- 4-beat AXI burst, back to default 0x03 ---
+    // --- 4-beat AXI burst ---
+`ifdef QSPI_MODEL_URAM
+    axi_write(REG_XIP_CMD, 32'h0000000B);
+    axi_write(REG_XIP_DUM, 32'h00000008);
+`else
     axi_write(REG_XIP_CMD, 32'h00000003);
     axi_write(REG_XIP_DUM, 32'h00000000);
+`endif
     begin
       logic [31:0] burst_expected[4];
       int burst_errors;
@@ -435,8 +447,13 @@ module tb_axi_qspi_controller_fpga_synt;
 
       axi_write(REG_CS_DEF, 32'h00000000);
       flash_page_program(TEST_ADDR, TEST_DATA);
+`ifdef QSPI_MODEL_URAM
+      axi_write(REG_XIP_CMD, 32'h0000000B);
+      axi_write(REG_XIP_DUM, 32'h00000008);
+`else
       axi_write(REG_XIP_CMD, 32'h00000003);
       axi_write(REG_XIP_DUM, 32'h00000000);
+`endif
       axi_read(TEST_ADDR + 32'h1000, rdata_wr);
 
       // flash_page_program() writes TEST_DATA MSB-first (flash bytes
