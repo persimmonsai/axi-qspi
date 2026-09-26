@@ -177,6 +177,14 @@ module spi_controller #(
   logic trigger_tx_q, trigger_tx_d;
   logic trigger_rx_q, trigger_rx_d;
 
+  // Chip-select: decoded combinationally from the FSM (spi_csn_c) but DRIVEN from a
+  // register (spi_csn_q). A LUT/gate decode of the binary-encoded state glitches when
+  // several state bits change together (CMD->DATA_RX), and a glitch on CS_N is an
+  // asynchronous end-of-frame for any SPI flash -- every read then returns zeros while
+  // commands that keep state_q[0] high (WREN, WRSR) still succeed. Board-proven on the
+  // HAPS-200 phase-2 image 2026-09-05, and invisible to zero-delay RTL simulation.
+  logic [3:0] spi_csn_c, spi_csn_q;
+
   logic clk_run;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -286,10 +294,17 @@ module spi_controller #(
   //   pulse_re = internal_fe; // Output Rising (corresponds to q 1->0, so ~q 0->1)
   //   pulse_fe = internal_re; // Output Falling (corresponds to q 0->1, so ~q 1->0)
   // Pulses enable FSM transitions
+  // Both pulses are qualified with clk_run: a pulse represents an edge of the SPI
+  // clock, so it must not exist while the clock generator is held. Without this the
+  // divider's compare (clk_cnt == clk_div) is true continuously whenever clk_div == 0
+  // even with the generator stopped, and first_edge_q below latches off that phantom
+  // pulse -- consuming Mode-3's "skip the first falling edge" on a cycle where no SCK
+  // edge ever occurred, which costs the frame one command bit (0x9F shifted out as
+  // 0x1F, measured at div=0/cpol=1).
   assign pulse_re  = cfg_clkdiv_bypass_i ? clk_run :
-                     (cpol) ? ((clk_cnt == clk_div) && (spi_clk_q == 1)) : ((clk_cnt == clk_div) && (spi_clk_q == 0));
+                     clk_run && ((cpol) ? ((clk_cnt == clk_div) && (spi_clk_q == 1)) : ((clk_cnt == clk_div) && (spi_clk_q == 0)));
   assign pulse_fe  = cfg_clkdiv_bypass_i ? clk_run :
-                     (cpol) ? ((clk_cnt == clk_div) && (spi_clk_q == 0)) : ((clk_cnt == clk_div) && (spi_clk_q == 1));
+                     clk_run && ((cpol) ? ((clk_cnt == clk_div) && (spi_clk_q == 0)) : ((clk_cnt == clk_div) && (spi_clk_q == 1)));
 
   // Mode 3 (CPOL=1, CPHA=1) Support:
   // In Mode 3, the first edge is Falling (Leading). The second is Rising (Trailing).
@@ -315,7 +330,13 @@ module spi_controller #(
 
 
 
-  assign clk_run   = (state_q != IDLE && state_q != WAIT_CS && state_q != PRE_FINISH && state_q != FINISH);
+  // Gated on spi_csn_q, not on the state alone: CS_N is registered (one clk_i later
+  // than the FSM leaves IDLE), so releasing the clock generator on the state alone
+  // would put the first SCK edge before CS_N asserts when clk_div == 0, and inside
+  // the CS_N-high window in cfg_clkdiv_bypass_i mode. Gating here keeps CS-to-first-
+  // edge setup >= 1 clk_i cycle at every divider setting.
+  assign clk_run   = (state_q != IDLE && state_q != WAIT_CS && state_q != PRE_FINISH && state_q != FINISH)
+                     && (spi_csn_q != 4'b1111);
   assign op_done_o = (state_q == WAIT_CS);
   assign busy_o = (state_q != IDLE);
 
@@ -334,9 +355,9 @@ module spi_controller #(
 
     rx_push_data = 0;
 
-    spi_csn_o = 4'b1111;  // Active Low, All Inactive by default
+    spi_csn_c = 4'b1111;  // Active Low, All Inactive by default
     if (state_q != IDLE && state_q != WAIT_CS && state_q != FINISH) begin
-      spi_csn_o[cfg_cs_index_i] = 0;
+      spi_csn_c[cfg_cs_index_i] = 0;
     end
 
     spi_oe_o   = 0;
@@ -345,7 +366,7 @@ module spi_controller #(
 
     case (state_q)
       IDLE: begin
-        spi_csn_o = 4'b1111;
+        spi_csn_c = 4'b1111;
         tx_word_cnt_d = 0;
         trigger_tx_d = 0;  // Reset in IDLE by default? specific logic below
         trigger_rx_d = 0;
@@ -861,14 +882,14 @@ module spi_controller #(
 
       PRE_FINISH: begin
         // Assert CS for the selected index
-        // spi_csn_o[index] = 0. Others 1.
+        // spi_csn_c[index] = 0. Others 1.
         // default is 1111.
-        spi_csn_o[cfg_cs_index_i] = 0;
+        spi_csn_c[cfg_cs_index_i] = 0;
         state_d = FINISH;
       end
 
       FINISH: begin
-        spi_csn_o = 4'b1111;
+        spi_csn_c = 4'b1111;
 
         // Partial Push if data remains
         // Logic handled in DATA_RX transition logic.
@@ -879,7 +900,7 @@ module spi_controller #(
       end
 
       WAIT_CS: begin
-        spi_csn_o = 4'b1111;
+        spi_csn_c = 4'b1111;
         if (!trigger_tx_q && !trigger_rx_q) state_d = IDLE;
       end
     endcase
@@ -934,5 +955,12 @@ module spi_controller #(
       rx_word_accum_q <= rx_word_accum_d;
     end
   end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) spi_csn_q <= 4'b1111;
+    else         spi_csn_q <= spi_csn_c;
+  end
+
+  assign spi_csn_o = spi_csn_q;
 
 endmodule

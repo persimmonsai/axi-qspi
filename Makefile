@@ -120,7 +120,7 @@ XRUN_COMMON := -64 -sv -access +r -timescale 1ns/1ps +define+TARGET_SIMULATION +
 	"+incdir+$(CURDIR)/deps/axi/include" \
 	"+incdir+$(CURDIR)/deps/common_cells/include"
 
-regress: regress-generic regress-fpga regress-s25hs01gt
+regress: regress-generic regress-fpga regress-s25hs01gt regress-cs-sck
 
 # All targets pin `-top` explicitly: without it, xrun auto-elaborates
 # every uninstantiated top-level module it finds in the compiled library --
@@ -175,3 +175,20 @@ regress-s25hs01gt:
 
 regress-clean:
 	rm -rf $(REGRESS_DIR)
+
+# 4. tb_spi_cs_sck_timing.sv -- directed CS_N/SCK relationship check on
+#    spi_controller alone, swept over every clock-divider setting the block can
+#    be configured to (div=0/1/2/7, cpol=0/1, and bypass). Checks that no SCK
+#    edge occurs while CS_N is deselected, that CS_N asserts exactly once per
+#    frame, and that the command byte actually shifted out is 0x9F -- i.e. that
+#    no edge is gained or lost at any divider setting. The other three targets
+#    all run at the reset-default divider, so none of them exercises div=0 or
+#    cpol=1; this one exists because a registered-CS change passed all three
+#    while silently dropping a command bit at div=0/cpol=1.
+regress-cs-sck:
+	mkdir -p $(REGRESS_DIR)/cs_sck
+	cd $(REGRESS_DIR)/cs_sck && xrun $(XRUN_COMMON) \
+		"$(CURDIR)/src/spi_controller.sv" \
+		"$(CURDIR)/tb/tb_spi_cs_sck_timing.sv" \
+		-top tb_spi_cs_sck_timing \
+		-run -exit

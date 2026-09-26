@@ -18,3 +18,6 @@ doc/rdl/
 # manually re-synced (copied) from here after editing the .rdl -- there is
 # no automated copy-back step.
 src/generated/
+
+# Regression output (`make regress`, REGRESS_DIR above)
+work-regress/
