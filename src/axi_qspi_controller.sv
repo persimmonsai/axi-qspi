@@ -467,7 +467,11 @@ module axi_qspi_controller #(
   assign regs_resp.ar_ready = s_axil_arready_flat;
   assign regs_resp.r_valid  = s_axil_rvalid_flat;
   assign regs_resp.r.resp   = s_axil_rresp_flat;
-  assign regs_resp.r.data   = {{(AXI4_RDATA_WIDTH - 32) {1'b0}}, s_axil_rdata_flat};
+  // Replicate the 32-bit register into every 32-bit lane (2026-09-30). Zero-extending put
+  // every register in bits [31:0], so on a 64-bit bus a read of an offset&4 register
+  // (CLKDIV, SPIADR, SPIDUM, CS_DEF, CS_M_x, XIP_DUM) returned 0 to any master that takes
+  // the upper lane -- PCIe and the debug module. Replication is correct for either lane.
+  assign regs_resp.r.data   = {(AXI4_RDATA_WIDTH / 32){s_axil_rdata_flat}};
   assign regs_resp.r.last   = 1'b1;  // AXI-Lite is always single beat
   assign regs_resp.r.id     = regs_arid_latch;  // Return latched ID
   assign regs_resp.r.user   = '0;
@@ -487,10 +491,14 @@ module axi_qspi_controller #(
       // based on addr[2]. For addr[2]=1 the store data/strobe lands in the
       // upper half of the 64-bit bus (bytes 4–7); for addr[2]=0 it is in the
       // lower half (bytes 0–3).
-      .s_axil_wdata ((AXI4_WDATA_WIDTH > 32 && regs_req.aw.addr[2]) ?
+      // Lane chosen from the W beat's OWN strobes (2026-09-30), not from aw.addr[2]: the
+      // register block latches AW and W independently, so a W accepted before its AW (or
+      // after the AW bus moved on) took the lane of a different transaction. Upper strobes
+      // set <=> the store is in bytes 4-7.
+      .s_axil_wdata ((AXI4_WDATA_WIDTH > 32 && |regs_req.w.strb[AXI4_WDATA_WIDTH/8-1 -: 4]) ?
                      regs_req.w.data[AXI4_WDATA_WIDTH-1 -: 32] :
                      regs_req.w.data[31:0]),
-      .s_axil_wstrb ((AXI4_WDATA_WIDTH > 32 && regs_req.aw.addr[2]) ?
+      .s_axil_wstrb ((AXI4_WDATA_WIDTH > 32 && |regs_req.w.strb[AXI4_WDATA_WIDTH/8-1 -: 4]) ?
                      regs_req.w.strb[AXI4_WDATA_WIDTH/8-1 -: 4] :
                      regs_req.w.strb[3:0]),
 

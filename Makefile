@@ -5,7 +5,7 @@ VENV ?= .venv
 PEAKRDL = $(VENV)/bin/peakrdl
 
 .PHONY: all clean venv gen docs headers verilator \
-	regress regress-generic regress-fpga regress-s25hs01gt regress-clean
+	regress regress-generic regress-fpga regress-s25hs01gt regress-lane64 regress-clean
 
 all: gen
 
@@ -120,7 +120,7 @@ XRUN_COMMON := -64 -sv -access +r -timescale 1ns/1ps +define+TARGET_SIMULATION +
 	"+incdir+$(CURDIR)/deps/axi/include" \
 	"+incdir+$(CURDIR)/deps/common_cells/include"
 
-regress: regress-generic regress-fpga regress-s25hs01gt
+regress: regress-generic regress-fpga regress-s25hs01gt regress-lane64
 
 # All targets pin `-top` explicitly: without it, xrun auto-elaborates
 # every uninstantiated top-level module it finds in the compiled library --
@@ -160,6 +160,19 @@ regress-fpga:
 		-f files.f \
 		"$(CURDIR)/tb/tb_axi_qspi_controller_fpga_synt.sv" \
 		-top tb_axi_qspi_controller_fpga_synt \
+		-run -exit
+
+# 4. tb_axi_qspi_controller_lane64.sv -- the controller on a 64-bit AXI bus (as in
+#    anc_adapter), driven like the chiplet's PCIe / debug-module path: 32-bit data only
+#    in its own lane, strobes on that lane only, optionally W before AW. Every other
+#    testbench runs the controller at 32 bits and cannot see lane steering.
+regress-lane64:
+	mkdir -p $(REGRESS_DIR)/lane64
+	cd $(REGRESS_DIR)/lane64 && $(BENDER) script flist -t simulation > files.f
+	cd $(REGRESS_DIR)/lane64 && xrun $(XRUN_COMMON) +define+USE_STD_SPI_MODEL \
+		-f files.f \
+		"$(CURDIR)/tb/tb_axi_qspi_controller_lane64.sv" \
+		-top tb_axi_qspi_controller_lane64 \
 		-run -exit
 
 # 3. tb_axi_qspi_controller_s25hs01gt.sv vs the real Infineon S25HS01GT model
